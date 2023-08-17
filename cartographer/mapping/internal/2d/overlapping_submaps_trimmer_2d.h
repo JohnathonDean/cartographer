@@ -40,10 +40,13 @@ class OverlappingSubmapsTrimmer2D : public PoseGraphTrimmer {
 
  private:
   // Number of the most recent submaps to keep.
+  // 最多允许几个submap被覆盖而不删除
   const uint16 fresh_submaps_count_;
   // Minimum area of covered space to keep submap from trimming measured in m^2.
+  // submap未被覆盖区域的面积小于该值时会被删除
   const double min_covered_area_;
   // Number of added submaps before the trimmer is invoked.
+  // 每满min_added_submaps_count_个新的submap，执行一次删除
   const uint16 min_added_submaps_count_;
   // Current finished submap count.
   uint16 current_submap_count_ = 0;

@@ -87,6 +87,8 @@ POSE_GRAPH = {
   global_sampling_ratio = 0.003,
   log_residual_histograms = true,
   global_constraint_search_after_n_seconds = 10.,
+
+  --  在PoseGraph2D中配置OverlappingSubmapsTrimmer2D实现对重叠率高的submap进行删除
   --  overlapping_submaps_trimmer_2d = {
   --    fresh_submaps_count = 1,
   --    min_covered_area = 2,
