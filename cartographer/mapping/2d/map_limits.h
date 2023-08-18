@@ -66,6 +66,7 @@ class MapLimits {
   // Returns the index of the cell containing the 'point' which may be outside
   // the map, i.e., negative or too large indices that will return false for
   // Contains().
+  // 通过物理坐标计算像素索引
   Eigen::Array2i GetCellIndex(const Eigen::Vector2f& point) const {
     // Index values are row major and the top left has Eigen::Array2i::Zero()
     // and contains (centered_max_x, centered_max_y). We need to flip and
@@ -74,14 +75,32 @@ class MapLimits {
         common::RoundToInt((max_.y() - point.y()) / resolution_ - 0.5),
         common::RoundToInt((max_.x() - point.x()) / resolution_ - 0.5));
   }
+/**
+ * note: 地图坐标系可视化展示
+ * ros的地图坐标系    cartographer的地图坐标系     cartographer地图的像素坐标系 
+ * 
+ * ^ y                            ^ x              0------> x
+ * |                              |                |
+ * |                              |                |
+ * 0 ------> x           y <------0                y       
+ * 
+ * ros的地图坐标系: 左下角为原点, 向右为x正方向, 向上为y正方向, 角度以x轴正向为0度, 逆时针为正
+ * cartographer的地图坐标系: 坐标系右下角为原点, 向上为x正方向, 向左为y正方向
+ *             角度正方向以x轴正向为0度, 逆时针为正
+ * cartographer地图的像素坐标系: 左上角为原点, 向右为x正方向, 向下为y正方向
+ */
+
+
 
   // Returns the center of the cell at 'cell_index'.
+  // 输入一个像素索引，然后返回该像素中心点对应在地图坐标系下的物理坐标
   Eigen::Vector2f GetCellCenter(const Eigen::Array2i cell_index) const {
     return {max_.x() - resolution() * (cell_index[1] + 0.5),
             max_.y() - resolution() * (cell_index[0] + 0.5)};
   }
 
   // Returns true if the ProbabilityGrid contains 'cell_index'.
+  // 判断给定像素索引是否在栅格地图内部
   bool Contains(const Eigen::Array2i& cell_index) const {
     return (Eigen::Array2i(0, 0) <= cell_index).all() &&
            (cell_index <
@@ -90,9 +109,9 @@ class MapLimits {
   }
 
  private:
-  double resolution_;
-  Eigen::Vector2d max_;
-  CellLimits cell_limits_;
+  double resolution_; //栅格地图中一个像素代表地图坐标系多个个物理单位(米)
+  Eigen::Vector2d max_; //左上角的坐标为地图坐标的最大值
+  CellLimits cell_limits_;  //地图x方向与y方向的格子数
 };
 
 inline proto::MapLimits ToProto(const MapLimits& map_limits) {

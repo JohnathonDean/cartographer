@@ -134,19 +134,24 @@ void Submap2D::ToResponseProto(
   grid()->DrawToSubmapTexture(texture, local_pose());
 }
 
+// 向submap中插入lidar数据
 void Submap2D::InsertRangeData(
     const sensor::RangeData& range_data,
     const RangeDataInserterInterface* range_data_inserter) {
   CHECK(grid_);
   CHECK(!insertion_finished());
+  // 将雷达数据写到栅格地图中
   range_data_inserter->Insert(range_data, grid_.get());
+  // 插入到地图中的雷达数据的个数加1
   set_num_range_data(num_range_data() + 1);
 }
 
+// 停止插入lidar数据
 void Submap2D::Finish() {
   CHECK(grid_);
   CHECK(!insertion_finished());
   grid_ = grid_->ComputeCroppedGrid();
+  // 将子图标记为完成状态
   set_insertion_finished(true);
 }
 
@@ -158,28 +163,35 @@ std::vector<std::shared_ptr<const Submap2D>> ActiveSubmaps2D::submaps() const {
                                                       submaps_.end());
 }
 
+// 插入lidar数据的接口
 std::vector<std::shared_ptr<const Submap2D>> ActiveSubmaps2D::InsertRangeData(
     const sensor::RangeData& range_data) {
+  // 最初没有submap或者最后1个submap的idar数据量达到设定值，则插入一个新的submap
   if (submaps_.empty() ||
       submaps_.back()->num_range_data() == options_.num_range_data()) {
     AddSubmap(range_data.origin.head<2>());
   }
+  // 在活跃的submap分别插入数据
   for (auto& submap : submaps_) {
     submap->InsertRangeData(range_data, range_data_inserter_.get());
   }
+  // 如果第1个submap中的lidar数据量达到设定值的2倍，则停止插入lidar数据
   if (submaps_.front()->num_range_data() == 2 * options_.num_range_data()) {
     submaps_.front()->Finish();
   }
   return submaps();
 }
 
+// 创建地图数据写入器
 std::unique_ptr<RangeDataInserterInterface>
 ActiveSubmaps2D::CreateRangeDataInserter() {
   switch (options_.range_data_inserter_options().range_data_inserter_type()) {
+    // 概率栅格地图的写入器
     case proto::RangeDataInserterOptions::PROBABILITY_GRID_INSERTER_2D:
       return absl::make_unique<ProbabilityGridRangeDataInserter2D>(
           options_.range_data_inserter_options()
               .probability_grid_range_data_inserter_options_2d());
+    // tsdf地图的写入器
     case proto::RangeDataInserterOptions::TSDF_INSERTER_2D:
       return absl::make_unique<TSDFRangeDataInserter2D>(
           options_.range_data_inserter_options()
@@ -189,11 +201,13 @@ ActiveSubmaps2D::CreateRangeDataInserter() {
   }
 }
 
+//创建栅格地图，输入地图原点
 std::unique_ptr<GridInterface> ActiveSubmaps2D::CreateGrid(
     const Eigen::Vector2f& origin) {
   constexpr int kInitialSubmapSize = 100;
   float resolution = options_.grid_options_2d().resolution();
   switch (options_.grid_options_2d().grid_type()) {
+    // 创建概率栅格地图
     case proto::GridOptions2D::PROBABILITY_GRID:
       return absl::make_unique<ProbabilityGrid>(
           MapLimits(resolution,
@@ -202,6 +216,7 @@ std::unique_ptr<GridInterface> ActiveSubmaps2D::CreateGrid(
                                                 Eigen::Vector2d::Ones(),
                     CellLimits(kInitialSubmapSize, kInitialSubmapSize)),
           &conversion_tables_);
+    // 创建tsdf地图
     case proto::GridOptions2D::TSDF:
       return absl::make_unique<TSDF2D>(
           MapLimits(resolution,
@@ -225,13 +240,15 @@ void ActiveSubmaps2D::AddSubmap(const Eigen::Vector2f& origin) {
   if (submaps_.size() >= 2) {
     // This will crop the finished Submap before inserting a new Submap to
     // reduce peak memory usage a bit.
+    //在插入新的submap前,删除ActiveSubmaps队列中最早完成插入的submap
     CHECK(submaps_.front()->insertion_finished());
     submaps_.erase(submaps_.begin());
   }
+  // 创建新的submap，submap的localpose为第一帧的中心位置（在local slam坐标系下），不带角度
   submaps_.push_back(absl::make_unique<Submap2D>(
       origin,
       std::unique_ptr<Grid2D>(
-          static_cast<Grid2D*>(CreateGrid(origin).release())),
+          static_cast<Grid2D*>(CreateGrid(origin).release())),  //构建初始网格数据
       &conversion_tables_));
 }
 

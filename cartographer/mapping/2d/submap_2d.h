@@ -62,7 +62,9 @@ class Submap2D : public Submap {
   void Finish();
 
  private:
-  std::unique_ptr<Grid2D> grid_;
+  std::unique_ptr<Grid2D> grid_; // 地图栅格数据
+
+  // 转换表, 第[0-32767]位置, 存的是[0.9, 0.1~0.9]的数据
   ValueConversionTables* conversion_tables_;
 };
 

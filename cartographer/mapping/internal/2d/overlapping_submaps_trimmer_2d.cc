@@ -90,19 +90,14 @@ std::set<SubmapId> AddSubmapsToSubmapCoverageGrid2D(
       // 根据cell id，转换为3d坐标(在Local SLAM坐标系下的坐标)
       const transform::Rigid3d center_of_cell_in_local_frame =
           transform::Rigid3d::Translation(Eigen::Vector3d(
-              grid.limits().max().x() -
-                  grid.limits().resolution() * (index.y() + 0.5),
-              grid.limits().max().y() -
-                  grid.limits().resolution() * (index.x() + 0.5),
+              grid.limits().max().x() - grid.limits().resolution() * (index.y() + 0.5),
+              grid.limits().max().y() - grid.limits().resolution() * (index.x() + 0.5),
               0));
       // 点在global SLAM坐标系下的位姿
       const transform::Rigid2d center_of_cell_in_global_frame =
-          transform::Project2D(global_frame_from_submap_frame *
-                               submap_frame_from_local_frame *
-                               center_of_cell_in_local_frame);
+          transform::Project2D(global_frame_from_submap_frame * submap_frame_from_local_frame * center_of_cell_in_local_frame);
       // 在全局地图的coverage_grid对应的栅格中插入覆盖子图的id和更新时间
-      coverage_grid->AddPoint(center_of_cell_in_global_frame.translation(),
-                              submap.id, freshness->second);
+      coverage_grid->AddPoint(center_of_cell_in_global_frame.translation(), submap.id, freshness->second);
     }
   }
   return all_submap_ids;
@@ -235,3 +230,36 @@ void OverlappingSubmapsTrimmer2D::Trim(Trimmable* pose_graph) {
 
 }  // namespace mapping
 }  // namespace cartographer
+
+
+#include <Eigen/Geometry>
+
+// 判断两个矩形是否有重叠
+bool IsRectanglesOverlap(const Eigen::Isometry3d& rectA_pose, const Eigen::Isometry3d& rectB_pose,
+                         double rectA_x_min, double rectA_y_min, double rectA_x_max, double rectA_y_max,
+                         double rectB_x_min, double rectB_y_min, double rectB_x_max, double rectB_y_max) {
+    // 计算从A到B的坐标系转换
+    Eigen::Isometry3d A_to_B = rectB_pose.inverse() * rectA_pose;
+
+    // 定义A矩形的四个顶点
+    Eigen::Vector3d A_top_left(     rectA_x_min, rectA_y_min, 1.0);
+    Eigen::Vector3d A_top_right(    rectA_x_max, rectA_y_min, 1.0);
+    Eigen::Vector3d A_bottom_left(  rectA_x_min, rectA_y_max, 1.0);
+    Eigen::Vector3d A_bottom_right( rectA_x_max, rectA_y_max, 1.0);
+
+    // 将A矩形的四个顶点转换到B的坐标系中
+    A_top_left = A_to_B * A_top_left;
+    A_top_right = A_to_B * A_top_right;
+    A_bottom_left = A_to_B * A_bottom_left;
+    A_bottom_right = A_to_B * A_bottom_right;
+
+    // 检查A矩形的转换后的顶点是否与B矩形有重叠
+    if (std::max({A_top_left.x(), A_top_right.x(), A_bottom_left.x(), A_bottom_right.x()}) < rectB_x_min || 
+        std::min({A_top_left.x(), A_top_right.x(), A_bottom_left.x(), A_bottom_right.x()}) > rectB_x_max ||
+        std::max({A_top_left.y(), A_top_right.y(), A_bottom_left.y(), A_bottom_right.y()}) < rectB_y_min || 
+        std::min({A_top_left.y(), A_top_right.y(), A_bottom_left.y(), A_bottom_right.y()}) > rectB_y_max) {
+        return false; // 无重叠
+    }
+
+    return true; // 有重叠
+}

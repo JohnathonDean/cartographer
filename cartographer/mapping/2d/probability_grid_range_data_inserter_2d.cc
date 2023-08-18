@@ -49,33 +49,45 @@ void GrowAsNeeded(const sensor::RangeData& range_data,
                                kPadding * Eigen::Vector2f::Ones());
 }
 
+// 更新概率栅格地图中的栅格概率值
 void CastRays(const sensor::RangeData& range_data,
               const std::vector<uint16>& hit_table,
               const std::vector<uint16>& miss_table,
               const bool insert_free_space, ProbabilityGrid* probability_grid) {
   GrowAsNeeded(range_data, probability_grid);
-
+  // 获取栅格地图的limits
   const MapLimits& limits = probability_grid->limits();
+  // 定义一个超分辨率，把当前的分辨率又划分成了kSubpixelScale份，这里int kSubpixelScale = 1000
   const double superscaled_resolution = limits.resolution() / kSubpixelScale;
+  // 根据超分辨率又生成了一个新的MapLimits
   const MapLimits superscaled_limits(
       superscaled_resolution, limits.max(),
       CellLimits(limits.cell_limits().num_x_cells * kSubpixelScale,
                  limits.cell_limits().num_y_cells * kSubpixelScale));
+  // 根据RangeData原点的前两项，获取其对应的CellIndex。该坐标是我们所求的射线的原点。
   const Eigen::Array2i begin =
       superscaled_limits.GetCellIndex(range_data.origin.head<2>());
   // Compute and add the end points.
+  // 定义一个向量集合，该集合存储RangeData中的hits的点。
   std::vector<Eigen::Array2i> ends;
   ends.reserve(range_data.returns.size());
   for (const sensor::RangefinderPoint& hit : range_data.returns) {
+    // 遍历returns这个集合，把每个点先压入ends中，
     ends.push_back(superscaled_limits.GetCellIndex(hit.position.head<2>()));
+    // ends.back()返回的是vector中的最末尾项，也就是我们刚刚压入vector中的那一项；
+    // hit_table就是预先计算好的hit查找表。如果一个cell，原先的值是value，那么在检测到hit后应该更新为多少
     probability_grid->ApplyLookupTable(ends.back() / kSubpixelScale, hit_table);
   }
 
   if (!insert_free_space) {
+    // 如果配置项里设置是不考虑free space。那么函数到这里结束，只处理完hit后返回即可
+    // 否则的话，需要计算那条射线，射线中间的点都是free space，同时，没有检测到hit的misses集里也都是free
+    // 默认insert_free_space=true，即不进这个入口。
     return;
   }
 
   // Now add the misses.
+  // 处理origin跟hit之间的射线中间的点
   for (const Eigen::Array2i& end : ends) {
     std::vector<Eigen::Array2i> ray =
         RayToPixelMask(begin, end, kSubpixelScale);
@@ -85,6 +97,7 @@ void CastRays(const sensor::RangeData& range_data,
   }
 
   // Finally, compute and add empty rays based on misses in the range data.
+  // 同样处理miss集合中的点
   for (const sensor::RangefinderPoint& missing_echo : range_data.misses) {
     std::vector<Eigen::Array2i> ray = RayToPixelMask(
         begin, superscaled_limits.GetCellIndex(missing_echo.position.head<2>()),

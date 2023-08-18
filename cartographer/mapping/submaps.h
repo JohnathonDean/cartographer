@@ -34,6 +34,7 @@ namespace cartographer {
 namespace mapping {
 
 // Converts the given probability to log odds.
+// 对论文里的 odds(p)函数 又取了 log
 inline float Logit(float probability) {
   return std::log(probability / (1.f - probability));
 }
@@ -85,9 +86,10 @@ class Submap {
   }
 
  private:
-  const transform::Rigid3d local_pose_;
-  int num_range_data_ = 0;
-  bool insertion_finished_ = false;
+  const transform::Rigid3d local_pose_; // submap原点在local坐标系下的坐标
+  int num_range_data_ = 0;  //子图中lidar数据的帧数，初始为0
+  bool insertion_finished_ = false; //是否为插入完成状态，初始为否。
+
 };
 
 }  // namespace mapping

@@ -84,19 +84,22 @@ TRAJECTORY_BUILDER_2D = {
     },
   },
 
+  -- 子图相关的一些配置
   submaps = {
-    num_range_data = 90,
+    num_range_data = 90,  -- 一个子图里插入雷达数据的个数的一半
     grid_options_2d = {
-      grid_type = "PROBABILITY_GRID",
-      resolution = 0.05,
+      grid_type = "PROBABILITY_GRID", -- 地图的种类, 还可以是tsdf格式
+      resolution = 0.05,  --分辨率
     },
     range_data_inserter = {
-      range_data_inserter_type = "PROBABILITY_GRID_INSERTER_2D",
+      range_data_inserter_type = "PROBABILITY_GRID_INSERTER_2D",  --使用2D栅格概率图插入数据
+      -- 概率占用栅格地图的一些配置
       probability_grid_range_data_inserter = {
         insert_free_space = true,
         hit_probability = 0.55,
         miss_probability = 0.49,
       },
+      -- tsdf地图的一些配置
       tsdf_range_data_inserter = {
         truncation_distance = 0.3,
         maximum_weight = 10.,

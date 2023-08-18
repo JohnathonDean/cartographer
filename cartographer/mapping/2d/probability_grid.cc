@@ -38,13 +38,17 @@ ProbabilityGrid::ProbabilityGrid(const proto::Grid2D& proto,
 
 // Sets the probability of the cell at 'cell_index' to the given
 // 'probability'. Only allowed if the cell was unknown before.
+// 将 索引 处单元格的概率设置为给定的概率, 仅当单元格之前处于未知状态时才允许
 void ProbabilityGrid::SetProbability(const Eigen::Array2i& cell_index,
                                      const float probability) {
+  // 获取对应栅格的引用
   uint16& cell =
       (*mutable_correspondence_cost_cells())[ToFlatIndex(cell_index)];
   CHECK_EQ(cell, kUnknownProbabilityValue);
+  // 为栅格赋值 value
   cell =
       CorrespondenceCostToValue(ProbabilityToCorrespondenceCost(probability));
+  // 更新bounding_box
   mutable_known_cells_box()->extend(cell_index.matrix());
 }
 
@@ -55,17 +59,24 @@ void ProbabilityGrid::SetProbability(const Eigen::Array2i& cell_index,
 //
 // If this is the first call to ApplyOdds() for the specified cell, its value
 // will be set to probability corresponding to 'odds'.
+// 使用查找表对指定栅格进行栅格值的更新
 bool ProbabilityGrid::ApplyLookupTable(const Eigen::Array2i& cell_index,
                                        const std::vector<uint16>& table) {
   DCHECK_EQ(table.size(), kUpdateMarker);
+  // 把二维 cell_index 变换成一维索引 flat_index
   const int flat_index = ToFlatIndex(cell_index);
+  // 获取对应栅格的指针
   uint16* cell = &(*mutable_correspondence_cost_cells())[flat_index];
+  // 对处于更新状态的栅格, 不再进行更新了
   if (*cell >= kUpdateMarker) {
     return false;
   }
+  // 标记这个索引的栅格已经被更新过
   mutable_update_indices()->push_back(flat_index);
+  // 更新栅格值
   *cell = table[*cell];
   DCHECK_GE(*cell, kUpdateMarker);
+  // 更新bounding_box
   mutable_known_cells_box()->extend(cell_index.matrix());
   return true;
 }
@@ -75,6 +86,8 @@ GridType ProbabilityGrid::GetGridType() const {
 }
 
 // Returns the probability of the cell with 'cell_index'.
+// 获取 索引 处单元格的占用概率
+//其上的 kValueToProbability 与 kValueToCorrespondenceCost 是两个转换表，第一个表示转换成被占用的概率，第二个表示未被占用的概率。
 float ProbabilityGrid::GetProbability(const Eigen::Array2i& cell_index) const {
   if (!limits().Contains(cell_index)) return kMinProbability;
   return CorrespondenceCostToProbability(ValueToCorrespondenceCost(
@@ -88,32 +101,40 @@ proto::Grid2D ProbabilityGrid::ToProto() const {
   return result;
 }
 
+// 根据bounding_box对栅格地图进行裁剪到正好包含点云
 std::unique_ptr<Grid2D> ProbabilityGrid::ComputeCroppedGrid() const {
   Eigen::Array2i offset;
   CellLimits cell_limits;
+  // 根据bounding_box对栅格地图进行裁剪
   ComputeCroppedLimits(&offset, &cell_limits);
   const double resolution = limits().resolution();
+  // 重新计算最大值坐标
   const Eigen::Vector2d max =
       limits().max() - resolution * Eigen::Vector2d(offset.y(), offset.x());
+  // 重新定义概率栅格地图的大小
   std::unique_ptr<ProbabilityGrid> cropped_grid =
       absl::make_unique<ProbabilityGrid>(
           MapLimits(resolution, max, cell_limits), conversion_tables_);
+  // 给新栅格地图赋值
   for (const Eigen::Array2i& xy_index : XYIndexRangeIterator(cell_limits)) {
     if (!IsKnown(xy_index + offset)) continue;
     cropped_grid->SetProbability(xy_index, GetProbability(xy_index + offset));
   }
-
+  // 返回新地图的指针
   return std::unique_ptr<Grid2D>(cropped_grid.release());
 }
 
+// 获取压缩后的地图栅格数据
 bool ProbabilityGrid::DrawToSubmapTexture(
     proto::SubmapQuery::Response::SubmapTexture* const texture,
     transform::Rigid3d local_pose) const {
   Eigen::Array2i offset;
   CellLimits cell_limits;
+  // 根据bounding_box对栅格地图进行裁剪
   ComputeCroppedLimits(&offset, &cell_limits);
 
   std::string cells;
+  // 遍历地图, 将栅格数据存入cells
   for (const Eigen::Array2i& xy_index : XYIndexRangeIterator(cell_limits)) {
     if (!IsKnown(xy_index + offset)) {
       cells.push_back(0 /* unknown log odds value */);
@@ -126,15 +147,18 @@ bool ProbabilityGrid::DrawToSubmapTexture(
     // zero, and use 'alpha' to subtract. This is only correct when the pixel
     // is currently white, so walls will look too gray. This should be hard to
     // detect visually for the user, though.
+    // delta处于[-127, 127]
     const int delta =
         128 - ProbabilityToLogOddsInteger(GetProbability(xy_index + offset));
     const uint8 alpha = delta > 0 ? 0 : -delta;
     const uint8 value = delta > 0 ? delta : 0;
+    // 存数据时存了2个值, 一个是栅格值value, 另一个是alpha透明度
     cells.push_back(value);
     cells.push_back((value || alpha) ? alpha : 1);
   }
-
+  // 保存地图栅格数据时进行压缩
   common::FastGzipString(cells, texture->mutable_cells());
+  // 填充地图描述信息
   texture->set_width(cell_limits.num_x_cells);
   texture->set_height(cell_limits.num_y_cells);
   const double resolution = limits().resolution();
