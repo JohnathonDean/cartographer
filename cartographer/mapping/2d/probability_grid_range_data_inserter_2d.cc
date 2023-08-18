@@ -32,10 +32,13 @@ namespace {
 // Factor for subpixel accuracy of start and end point for ray casts.
 constexpr int kSubpixelScale = 1000;
 
+// 根据点云的bounding box, 看是否需要对地图进行扩张
 void GrowAsNeeded(const sensor::RangeData& range_data,
                   ProbabilityGrid* const probability_grid) {
+  // 找到点云的bounding_box，获得目前探索过的区域
   Eigen::AlignedBox2f bounding_box(range_data.origin.head<2>());
   // Padding around bounding box to avoid numerical issues at cell boundaries.
+  //对区域进行填充，保证雷达点云数据的点都位于该区域类
   constexpr float kPadding = 1e-6f;
   for (const sensor::RangefinderPoint& hit : range_data.returns) {
     bounding_box.extend(hit.position.head<2>());
@@ -43,6 +46,7 @@ void GrowAsNeeded(const sensor::RangeData& range_data,
   for (const sensor::RangefinderPoint& miss : range_data.misses) {
     bounding_box.extend(miss.position.head<2>());
   }
+  // 对地图进行扩充，新扩充的点云数据对应的cekk坐标被包含在扩充之后的地图之中
   probability_grid->GrowLimits(bounding_box.min() -
                                kPadding * Eigen::Vector2f::Ones());
   probability_grid->GrowLimits(bounding_box.max() +

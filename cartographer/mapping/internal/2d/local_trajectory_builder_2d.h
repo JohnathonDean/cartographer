@@ -44,14 +44,17 @@ namespace mapping {
 class LocalTrajectoryBuilder2D {
  public:
   struct InsertionResult {
-    std::shared_ptr<const TrajectoryNode::Data> constant_data;
-    std::vector<std::shared_ptr<const Submap2D>> insertion_submaps;
+    std::shared_ptr<const TrajectoryNode::Data> constant_data;//节点数据
+    std::vector<std::shared_ptr<const Submap2D>> insertion_submaps;//插入的submap的向量
   };
+
+  // matching结果。包括时间、匹配的local_pose、传感器数据、插入结果等
   struct MatchingResult {
     common::Time time;
     transform::Rigid3d local_pose;
     sensor::RangeData range_data_in_local;
     // 'nullptr' if dropped by the motion filter.
+    // 如果被MotionFilter滤掉了，那么insertion_result返回空指针。
     std::unique_ptr<const InsertionResult> insertion_result;
   };
 
@@ -100,6 +103,7 @@ class LocalTrajectoryBuilder2D {
   void InitializeExtrapolator(common::Time time);
 
   const proto::LocalTrajectoryBuilderOptions2D options_;
+  // 在local SLAM中活跃的submap，一般最多有2张submap活跃
   ActiveSubmaps2D active_submaps_;
 
   MotionFilter motion_filter_;

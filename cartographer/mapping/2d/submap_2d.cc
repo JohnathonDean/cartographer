@@ -163,7 +163,7 @@ std::vector<std::shared_ptr<const Submap2D>> ActiveSubmaps2D::submaps() const {
                                                       submaps_.end());
 }
 
-// 插入lidar数据的接口
+// 插入lidar数据的接口，返回插入雷达数据后的活跃submap队列
 std::vector<std::shared_ptr<const Submap2D>> ActiveSubmaps2D::InsertRangeData(
     const sensor::RangeData& range_data) {
   // 最初没有submap或者最后1个submap的idar数据量达到设定值，则插入一个新的submap
