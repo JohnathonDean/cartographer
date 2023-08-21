@@ -66,6 +66,7 @@ class PoseGraphTrimmer {
 
 // Keeps the last 'num_submaps_to_keep' of the trajectory with 'trajectory_id'
 // to implement localization without mapping.
+// 在定位模式下只在轨迹中保留最新的几张submap，不进行建图
 class PureLocalizationTrimmer : public PoseGraphTrimmer {
  public:
   PureLocalizationTrimmer(int trajectory_id, int num_submaps_to_keep);

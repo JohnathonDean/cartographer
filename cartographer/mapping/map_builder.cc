@@ -57,6 +57,7 @@ void MaybeAddPureLocalizationTrimmer(
     const int trajectory_id,
     const proto::TrajectoryBuilderOptions& trajectory_options,
     PoseGraph* pose_graph) {
+  // 如果是在定位模式下，则加入pure_localization_trimmer
   if (trajectory_options.pure_localization()) {
     LOG(WARNING)
         << "'TrajectoryBuilderOptions::pure_localization' field is deprecated. "
@@ -74,10 +75,13 @@ void MaybeAddPureLocalizationTrimmer(
 
 }  // namespace
 
+// MapBuilder类是完整的SLAM算法类
+// 包含前端(TrajectoryBuilders,scan to submap) 与 后端(用于查找回环的PoseGraph) 
 MapBuilder::MapBuilder(const proto::MapBuilderOptions& options)
     : options_(options), thread_pool_(options.num_background_threads()) {
   CHECK(options.use_trajectory_builder_2d() ^
         options.use_trajectory_builder_3d());
+  // 根据参数配置构造pose_graph_并初始化
   if (options.use_trajectory_builder_2d()) {
     pose_graph_ = absl::make_unique<PoseGraph2D>(
         options_.pose_graph_options(),
@@ -99,12 +103,23 @@ MapBuilder::MapBuilder(const proto::MapBuilderOptions& options)
   }
 }
 
+/**
+ * @brief 创建一个新的 TrajectoryBuilder 并返回它的 trajectory_id
+ * 
+ * @param[in] expected_sensor_ids 所有需要的topic的名字的集合
+ * @param[in] trajectory_options 轨迹的参数配置
+ * @param[in] local_slam_result_callback 需要传入的回调函数
+ *        实际上是map_builder_bridge.cc 中的 OnLocalSlamResult() 函数
+ * @return int 新生成的轨迹的id
+ */
 int MapBuilder::AddTrajectoryBuilder(
     const std::set<SensorId>& expected_sensor_ids,
     const proto::TrajectoryBuilderOptions& trajectory_options,
     LocalSlamResultCallback local_slam_result_callback) {
+  // 生成新创建的trajectory的id
   const int trajectory_id = trajectory_builders_.size();
 
+  // 初始化MotionFilter
   absl::optional<MotionFilter> pose_graph_odometry_motion_filter;
   if (trajectory_options.has_pose_graph_odometry_motion_filter()) {
     LOG(INFO) << "Using a motion filter for adding odometry to the pose graph.";
@@ -112,6 +127,7 @@ int MapBuilder::AddTrajectoryBuilder(
         MotionFilter(trajectory_options.pose_graph_odometry_motion_filter()));
   }
 
+  // 创建并初始化trajectory
   if (options_.use_trajectory_builder_3d()) {
     std::unique_ptr<LocalTrajectoryBuilder3D> local_trajectory_builder;
     if (trajectory_options.has_trajectory_builder_3d_options()) {
@@ -128,6 +144,7 @@ int MapBuilder::AddTrajectoryBuilder(
             static_cast<PoseGraph3D*>(pose_graph_.get()),
             local_slam_result_callback, pose_graph_odometry_motion_filter)));
   } else {
+     // local_trajectory_builder(前端)的初始化
     std::unique_ptr<LocalTrajectoryBuilder2D> local_trajectory_builder;
     if (trajectory_options.has_trajectory_builder_2d_options()) {
       local_trajectory_builder = absl::make_unique<LocalTrajectoryBuilder2D>(
@@ -135,6 +152,7 @@ int MapBuilder::AddTrajectoryBuilder(
           SelectRangeSensorIds(expected_sensor_ids));
     }
     DCHECK(dynamic_cast<PoseGraph2D*>(pose_graph_.get()));
+    // CollatedTrajectoryBuilder初始化
     trajectory_builders_.push_back(absl::make_unique<CollatedTrajectoryBuilder>(
         trajectory_options, sensor_collator_.get(), trajectory_id,
         expected_sensor_ids,
@@ -143,13 +161,15 @@ int MapBuilder::AddTrajectoryBuilder(
             static_cast<PoseGraph2D*>(pose_graph_.get()),
             local_slam_result_callback, pose_graph_odometry_motion_filter)));
   }
+
+  // 在定位过程中将使用pure_localization_trimmer删除用于纯定位的submap
   MaybeAddPureLocalizationTrimmer(trajectory_id, trajectory_options,
                                   pose_graph_.get());
 
   if (trajectory_options.has_initial_trajectory_pose()) {
     const auto& initial_trajectory_pose =
         trajectory_options.initial_trajectory_pose();
-    pose_graph_->SetInitialTrajectoryPose(
+    pose_graph_->SetInitialTrajector·yPose(
         trajectory_id, initial_trajectory_pose.to_trajectory_id(),
         transform::ToRigid3(initial_trajectory_pose.relative_pose()),
         common::FromUniversal(initial_trajectory_pose.timestamp()));
@@ -396,6 +416,7 @@ std::map<int, int> MapBuilder::LoadStateFromFile(
   return LoadState(&stream, load_frozen_state);
 }
 
+// 创建MapBuilder
 std::unique_ptr<MapBuilderInterface> CreateMapBuilder(
     const proto::MapBuilderOptions& options) {
   return absl::make_unique<MapBuilder>(options);

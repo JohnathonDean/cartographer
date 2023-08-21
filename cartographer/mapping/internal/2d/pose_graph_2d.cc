@@ -57,6 +57,7 @@ PoseGraph2D::PoseGraph2D(
       optimization_problem_(std::move(optimization_problem)),
       constraint_builder_(options_.constraint_builder_options(), thread_pool),
       thread_pool_(thread_pool) {
+  // 如果配置有overlapping_submaps_trimmer_2d参数，在初始化一个OverlappingSubmapsTrimmer2D并加入处理队列
   if (options.has_overlapping_submaps_trimmer_2d()) {
     const auto& trimmer_options = options.overlapping_submaps_trimmer_2d();
     AddTrimmer(absl::make_unique<OverlappingSubmapsTrimmer2D>(
@@ -151,6 +152,7 @@ NodeId PoseGraph2D::AppendNode(
   return node_id;
 }
 
+// 向pose_graph添加Node，返回NodeId。这是最上层的函数。通过该函数调用其他各种函数。
 NodeId PoseGraph2D::AddNode(
     std::shared_ptr<const TrajectoryNode::Data> constant_data,
     const int trajectory_id,

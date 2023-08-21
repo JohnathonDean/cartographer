@@ -28,11 +28,14 @@ PureLocalizationTrimmer::PureLocalizationTrimmer(const int trajectory_id,
 }
 
 void PureLocalizationTrimmer::Trim(Trimmable* const pose_graph) {
+  // 如果当前pose_graph中的指定id的轨迹为完成状态，则不保留submap
   if (pose_graph->IsFinished(trajectory_id_)) {
     num_submaps_to_keep_ = 0;
   }
 
+  // 获取对应id轨迹的submap列表
   auto submap_ids = pose_graph->GetSubmapIds(trajectory_id_);
+  // 将列表中最早的submap删除，只保留最后num_submaps_to_keep_数量的submap
   for (std::size_t i = 0; i + num_submaps_to_keep_ < submap_ids.size(); ++i) {
     pose_graph->TrimSubmap(submap_ids.at(i));
   }
