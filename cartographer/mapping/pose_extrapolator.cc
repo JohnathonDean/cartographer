@@ -32,6 +32,7 @@ PoseExtrapolator::PoseExtrapolator(const common::Duration pose_queue_duration,
       cached_extrapolated_pose_{common::Time::min(),
                                 transform::Rigid3d::Identity()} {}
 
+// 使用IMU数据对外推器初始化
 std::unique_ptr<PoseExtrapolator> PoseExtrapolator::InitializeWithImu(
     const common::Duration pose_queue_duration,
     const double imu_gravity_time_constant, const sensor::ImuData& imu_data) {
@@ -65,6 +66,7 @@ common::Time PoseExtrapolator::GetLastExtrapolatedTime() const {
   return extrapolation_imu_tracker_->time();
 }
 
+// 添加激光匹配计算出来的位姿信息
 void PoseExtrapolator::AddPose(const common::Time time,
                                const transform::Rigid3d& pose) {
   if (imu_tracker_ == nullptr) {
@@ -80,14 +82,19 @@ void PoseExtrapolator::AddPose(const common::Time time,
          timed_pose_queue_[1].time <= time - pose_queue_duration_) {
     timed_pose_queue_.pop_front();
   }
+  // 根据激光匹配计算出来的位姿更新线速度和角速度
   UpdateVelocitiesFromPoses();
+  // 更新ImuTracker的时间进行IMU数据插值
   AdvanceImuTracker(time, imu_tracker_.get());
+  // 维护IMU数据队列
   TrimImuData();
+  // 维护Odom数据队列
   TrimOdometryData();
   odometry_imu_tracker_ = absl::make_unique<ImuTracker>(*imu_tracker_);
   extrapolation_imu_tracker_ = absl::make_unique<ImuTracker>(*imu_tracker_);
 }
 
+// 添加IMU数据
 void PoseExtrapolator::AddImuData(const sensor::ImuData& imu_data) {
   CHECK(timed_pose_queue_.empty() ||
         imu_data.time >= timed_pose_queue_.back().time);
@@ -95,6 +102,7 @@ void PoseExtrapolator::AddImuData(const sensor::ImuData& imu_data) {
   TrimImuData();
 }
 
+// 添加Odom数据
 void PoseExtrapolator::AddOdometryData(
     const sensor::OdometryData& odometry_data) {
   CHECK(timed_pose_queue_.empty() ||
@@ -107,11 +115,12 @@ void PoseExtrapolator::AddOdometryData(
   // TODO(whess): Improve by using more than just the last two odometry poses.
   // Compute extrapolation in the tracking frame.
   const sensor::OdometryData& odometry_data_oldest = odometry_data_.front();
-  const sensor::OdometryData& odometry_data_newest = odometry_data_.back();
+  const sensor::OdometryData& odometry_data_newest = odometry_dAdvanceImuTrackerata_.back();
   const double odometry_time_delta =
       common::ToSeconds(odometry_data_oldest.time - odometry_data_newest.time);
   const transform::Rigid3d odometry_pose_delta =
       odometry_data_newest.pose.inverse() * odometry_data_oldest.pose;
+  // 通过odom数据计算角速度
   angular_velocity_from_odometry_ =
       transform::RotationQuaternionToAngleAxisVector(
           odometry_pose_delta.rotation()) /
@@ -126,17 +135,21 @@ void PoseExtrapolator::AddOdometryData(
       timed_pose_queue_.back().pose.rotation() *
       ExtrapolateRotation(odometry_data_newest.time,
                           odometry_imu_tracker_.get());
+  // 通过odom数据计算线速度
   linear_velocity_from_odometry_ =
       orientation_at_newest_odometry_time *
       linear_velocity_in_tracking_frame_at_newest_odometry_time;
 }
 
+// 通过输入时间外推位姿
 transform::Rigid3d PoseExtrapolator::ExtrapolatePose(const common::Time time) {
   const TimedPose& newest_timed_pose = timed_pose_queue_.back();
   CHECK_GE(time, newest_timed_pose.time);
   if (cached_extrapolated_pose_.time != time) {
+    // 外推平移矩阵
     const Eigen::Vector3d translation =
         ExtrapolateTranslation(time) + newest_timed_pose.pose.translation();
+    // 外推旋转矩阵
     const Eigen::Quaterniond rotation =
         newest_timed_pose.pose.rotation() *
         ExtrapolateRotation(time, extrapolation_imu_tracker_.get());
@@ -146,6 +159,7 @@ transform::Rigid3d PoseExtrapolator::ExtrapolatePose(const common::Time time) {
   return cached_extrapolated_pose_.pose;
 }
 
+// 估计重力方向
 Eigen::Quaterniond PoseExtrapolator::EstimateGravityOrientation(
     const common::Time time) {
   ImuTracker imu_tracker = *imu_tracker_;
@@ -153,6 +167,7 @@ Eigen::Quaterniond PoseExtrapolator::EstimateGravityOrientation(
   return imu_tracker.orientation();
 }
 
+// 根据激光匹配计算出来的位姿更新线速度和角速度
 void PoseExtrapolator::UpdateVelocitiesFromPoses() {
   if (timed_pose_queue_.size() < 2) {
     // We need two poses to estimate velocities.
@@ -179,6 +194,7 @@ void PoseExtrapolator::UpdateVelocitiesFromPoses() {
       queue_delta;
 }
 
+// 维护IMU数据队列
 void PoseExtrapolator::TrimImuData() {
   while (imu_data_.size() > 1 && !timed_pose_queue_.empty() &&
          imu_data_[1].time <= timed_pose_queue_.back().time) {
@@ -186,6 +202,7 @@ void PoseExtrapolator::TrimImuData() {
   }
 }
 
+// 维护Odometry数据队列
 void PoseExtrapolator::TrimOdometryData() {
   while (odometry_data_.size() > 2 && !timed_pose_queue_.empty() &&
          odometry_data_[1].time <= timed_pose_queue_.back().time) {
@@ -193,6 +210,7 @@ void PoseExtrapolator::TrimOdometryData() {
   }
 }
 
+// 调用imu_tracker的Advance()更新时间并进行IMU数据插值
 void PoseExtrapolator::AdvanceImuTracker(const common::Time time,
                                          ImuTracker* const imu_tracker) const {
   CHECK_GE(time, imu_tracker->time());
@@ -224,6 +242,7 @@ void PoseExtrapolator::AdvanceImuTracker(const common::Time time,
   imu_tracker->Advance(time);
 }
 
+// 外推旋转矩阵
 Eigen::Quaterniond PoseExtrapolator::ExtrapolateRotation(
     const common::Time time, ImuTracker* const imu_tracker) const {
   CHECK_GE(time, imu_tracker->time());
@@ -232,6 +251,7 @@ Eigen::Quaterniond PoseExtrapolator::ExtrapolateRotation(
   return last_orientation.inverse() * imu_tracker->orientation();
 }
 
+// 外推平移矩阵
 Eigen::Vector3d PoseExtrapolator::ExtrapolateTranslation(common::Time time) {
   const TimedPose& newest_timed_pose = timed_pose_queue_.back();
   const double extrapolation_delta =

@@ -38,12 +38,17 @@ ImuTracker::ImuTracker(const double imu_gravity_time_constant,
 
 void ImuTracker::Advance(const common::Time time) {
   CHECK_LE(time_, time);
+  // 求输入时间和当前时间的时间差
   const double delta_t = common::ToSeconds(time - time_);
+    //进行匀角速度运动的外插.求得角度
   const Eigen::Quaterniond rotation =
       transform::AngleAxisVectorToRotationQuaternion(
           Eigen::Vector3d(imu_angular_velocity_ * delta_t));
+  //计算方向.
   orientation_ = (orientation_ * rotation).normalized();
+  //计算重力向量.
   gravity_vector_ = rotation.conjugate() * gravity_vector_;
+  // 更新时间
   time_ = time;
 }
 
@@ -51,23 +56,28 @@ void ImuTracker::AddImuLinearAccelerationObservation(
     const Eigen::Vector3d& imu_linear_acceleration) {
   // Update the 'gravity_vector_' with an exponential moving average using the
   // 'imu_gravity_time_constant'.
+    // 当前时刻离上一次时刻的差.
   const double delta_t =
       last_linear_acceleration_time_ > common::Time::min()
           ? common::ToSeconds(time_ - last_linear_acceleration_time_)
           : std::numeric_limits<double>::infinity();
   last_linear_acceleration_time_ = time_;
+    //计算权重,时间差越大,当前的权重越大.
   const double alpha = 1. - std::exp(-delta_t / imu_gravity_time_constant_);
+    //一阶低通融合.
   gravity_vector_ =
       (1. - alpha) * gravity_vector_ + alpha * imu_linear_acceleration;
   // Change the 'orientation_' so that it agrees with the current
   // 'gravity_vector_'.
   const Eigen::Quaterniond rotation = FromTwoVectors(
       gravity_vector_, orientation_.conjugate() * Eigen::Vector3d::UnitZ());
+  //更新方位角
   orientation_ = (orientation_ * rotation).normalized();
   CHECK_GT((orientation_ * gravity_vector_).z(), 0.);
   CHECK_GT((orientation_ * gravity_vector_).normalized().z(), 0.99);
 }
 
+//更新角速度信息.
 void ImuTracker::AddImuAngularVelocityObservation(
     const Eigen::Vector3d& imu_angular_velocity) {
   imu_angular_velocity_ = imu_angular_velocity;

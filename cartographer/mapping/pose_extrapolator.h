@@ -76,20 +76,20 @@ class PoseExtrapolator : public PoseExtrapolatorInterface {
     common::Time time;
     transform::Rigid3d pose;
   };
-  std::deque<TimedPose> timed_pose_queue_;
-  Eigen::Vector3d linear_velocity_from_poses_ = Eigen::Vector3d::Zero();
-  Eigen::Vector3d angular_velocity_from_poses_ = Eigen::Vector3d::Zero();
+  std::deque<TimedPose> timed_pose_queue_;  //timedpose的队列,点云匹配的位姿
+  Eigen::Vector3d linear_velocity_from_poses_ = Eigen::Vector3d::Zero();  //通过点云匹配的位姿获取的线速度
+  Eigen::Vector3d angular_velocity_from_poses_ = Eigen::Vector3d::Zero(); //通过点云匹配的位姿获取的角速度
 
   const double gravity_time_constant_;
-  std::deque<sensor::ImuData> imu_data_;
+  std::deque<sensor::ImuData> imu_data_;  //imu data的队列
   std::unique_ptr<ImuTracker> imu_tracker_;
   std::unique_ptr<ImuTracker> odometry_imu_tracker_;
   std::unique_ptr<ImuTracker> extrapolation_imu_tracker_;
   TimedPose cached_extrapolated_pose_;
 
-  std::deque<sensor::OdometryData> odometry_data_;
-  Eigen::Vector3d linear_velocity_from_odometry_ = Eigen::Vector3d::Zero();
-  Eigen::Vector3d angular_velocity_from_odometry_ = Eigen::Vector3d::Zero();
+  std::deque<sensor::OdometryData> odometry_data_;  //odom的队列
+  Eigen::Vector3d linear_velocity_from_odometry_ = Eigen::Vector3d::Zero(); //通过轮式里程计获取的线速度
+  Eigen::Vector3d angular_velocity_from_odometry_ = Eigen::Vector3d::Zero();  //通过轮式里程计获取的角速度
 };
 
 }  // namespace mapping

@@ -1209,6 +1209,7 @@ void PoseGraph2D::TrimmingHandle::SetTrajectoryState(int trajectory_id,
 void PoseGraph2D::TrimmingHandle::TrimSubmap(const SubmapId& submap_id) {
   // TODO(hrapp): We have to make sure that the trajectory has been finished
   // if we want to delete the last submaps.
+  // 删除操作前确保trajectory为完成状态
   CHECK(parent_->data_.submap_data.at(submap_id).state ==
         SubmapState::kFinished);
 
@@ -1216,6 +1217,7 @@ void PoseGraph2D::TrimmingHandle::TrimSubmap(const SubmapId& submap_id) {
   // once the submap with 'submap_id' is gone.
   // We need to use node_ids instead of constraints here to be also compatible
   // with frozen trajectories that don't have intra-constraints.
+  // 找到需要保留的submap对应node的id
   std::set<NodeId> nodes_to_retain;
   for (const auto& submap_data : parent_->data_.submap_data) {
     if (submap_data.id != submap_id) {
@@ -1225,6 +1227,7 @@ void PoseGraph2D::TrimmingHandle::TrimSubmap(const SubmapId& submap_id) {
   }
 
   // Remove all nodes that are exlusively associated to 'submap_id'.
+  // 找到需要删除的submap对应node的id
   std::set<NodeId> nodes_to_remove;
   std::set_difference(parent_->data_.submap_data.at(submap_id).node_ids.begin(),
                       parent_->data_.submap_data.at(submap_id).node_ids.end(),
@@ -1232,6 +1235,7 @@ void PoseGraph2D::TrimmingHandle::TrimSubmap(const SubmapId& submap_id) {
                       std::inserter(nodes_to_remove, nodes_to_remove.begin()));
 
   // Remove all 'data_.constraints' related to 'submap_id'.
+  // 将与删除submap相关联的constraints全部删除
   {
     std::vector<Constraint> constraints;
     for (const Constraint& constraint : parent_->data_.constraints) {
@@ -1245,6 +1249,7 @@ void PoseGraph2D::TrimmingHandle::TrimSubmap(const SubmapId& submap_id) {
   // Remove all 'data_.constraints' related to 'nodes_to_remove'.
   // If the removal lets other submaps lose all their inter-submap constraints,
   // delete their corresponding constraint submap matchers to save memory.
+  // 将与删除node相关联的constraints全部删除
   {
     std::vector<Constraint> constraints;
     std::set<SubmapId> other_submap_ids_losing_constraints;
@@ -1278,6 +1283,7 @@ void PoseGraph2D::TrimmingHandle::TrimSubmap(const SubmapId& submap_id) {
   }
 
   // Mark the submap with 'submap_id' as trimmed and remove its data.
+  // 将需要删除的submap标记为trimmed并删除其数据
   CHECK(parent_->data_.submap_data.at(submap_id).state ==
         SubmapState::kFinished);
   parent_->data_.submap_data.Trim(submap_id);
@@ -1294,6 +1300,7 @@ void PoseGraph2D::TrimmingHandle::TrimSubmap(const SubmapId& submap_id) {
 
   // Remove the 'nodes_to_remove' from the pose graph and the optimization
   // problem.
+  // 将需要删除的node的数据删除
   for (const NodeId& node_id : nodes_to_remove) {
     parent_->data_.trajectory_nodes.Trim(node_id);
     parent_->optimization_problem_->TrimTrajectoryNode(node_id);

@@ -29,21 +29,27 @@ namespace mapping {
 // though yaw does.
 class ImuTracker {
  public:
+// 构造函数,指数滤波器的常数 和 当前时间.
   ImuTracker(double imu_gravity_time_constant, common::Time time);
 
   // Advances to the given 'time' and updates the orientation to reflect this.
+  // 把ImuTracker更新到指定时刻time
+  //得到time时刻的重力向量信息,相当于进行外插.
   void Advance(common::Time time);
 
   // Updates from an IMU reading (in the IMU frame).
+  // 加入IMU坐标系的数据,用来更新重力向量和角速度信息.
   void AddImuLinearAccelerationObservation(
       const Eigen::Vector3d& imu_linear_acceleration);
   void AddImuAngularVelocityObservation(
       const Eigen::Vector3d& imu_angular_velocity);
 
   // Query the current time.
+    // 得到当前的时间.
   common::Time time() const { return time_; }
 
   // Query the current orientation estimate.
+    // 得到当前的估计.
   Eigen::Quaterniond orientation() const { return orientation_; }
 
  private:
