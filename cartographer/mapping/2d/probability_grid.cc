@@ -62,16 +62,18 @@ void ProbabilityGrid::SetProbability(const Eigen::Array2i& cell_index,
 // 使用查找表对指定栅格进行栅格值的更新
 bool ProbabilityGrid::ApplyLookupTable(const Eigen::Array2i& cell_index,
                                        const std::vector<uint16>& table) {
-  DCHECK_EQ(table.size(), kUpdateMarker);
+  DCHECK_EQ(table.size(), kUpdateMarker);  // 用于更新的表的大小是固定的
   // 把二维 cell_index 变换成一维索引 flat_index
   const int flat_index = ToFlatIndex(cell_index);
-  // 获取对应栅格的指针
+  // 获取对应栅格的原来的correspondence_cost值
   uint16* cell = &(*mutable_correspondence_cost_cells())[flat_index];
-  // 对处于更新状态的栅格, 不再进行更新了
+  // cell初始值为0(kUnknownCorrespondenceValue)，被更新一次之后会大于kUpdateMarker
+  // 目的是防止在一次更新过程中多次更新一个点的值
   if (*cell >= kUpdateMarker) {
     return false;
   }
-  // 标记这个索引的栅格已经被更新过
+  // 那什么时候<kUpdateMaker？——更新完此帧点云后，见void Grid2D::FinishUpdate()
+  // 更新了的index记录下，方便FinishUpdate一次性减去kUpdateMarker。
   mutable_update_indices()->push_back(flat_index);
   // 更新栅格值
   *cell = table[*cell];

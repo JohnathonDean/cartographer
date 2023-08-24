@@ -44,18 +44,21 @@ class Grid2D : public GridInterface {
                   ValueConversionTables* conversion_tables);
 
   // Returns the limits of this Grid2D.
+  // 返回栅格图Grid2D的限制
   const MapLimits& limits() const { return limits_; }
 
   // Finishes the update sequence.
   void FinishUpdate();
 
   // Returns the correspondence cost of the cell with 'cell_index'.
+  // 返回给定索引处的栅格概率值
   float GetCorrespondenceCost(const Eigen::Array2i& cell_index) const {
     if (!limits().Contains(cell_index)) return max_correspondence_cost_;
     return (*value_to_correspondence_cost_table_)
         [correspondence_cost_cells()[ToFlatIndex(cell_index)]];
   }
 
+  // 返回栅格图的类型
   virtual GridType GetGridType() const = 0;
 
   // Returns the minimum possible correspondence cost.
@@ -65,6 +68,7 @@ class Grid2D : public GridInterface {
   float GetMaxCorrespondenceCost() const { return max_correspondence_cost_; }
 
   // Returns true if the probability at the specified index is known.
+  // 返回给定索引处的栅格概率值是否是已知的
   bool IsKnown(const Eigen::Array2i& cell_index) const {
     return limits_.Contains(cell_index) &&
            correspondence_cost_cells_[ToFlatIndex(cell_index)] !=
@@ -73,6 +77,7 @@ class Grid2D : public GridInterface {
 
   // Fills in 'offset' and 'limits' to define a subregion of that contains all
   // known cells.
+  // 计算裁剪后的栅格图Grid2D的限制
   void ComputeCroppedLimits(Eigen::Array2i* const offset,
                             CellLimits* const limits) const;
 
@@ -116,14 +121,14 @@ class Grid2D : public GridInterface {
   }
 
  private:
-  MapLimits limits_;
-  std::vector<uint16> correspondence_cost_cells_;
-  float min_correspondence_cost_;
-  float max_correspondence_cost_;
-  std::vector<int> update_indices_;
+  MapLimits limits_;  // 定义网格图的限制或边界
+  std::vector<uint16> correspondence_cost_cells_;// 概率图中每个栅格的概率值。
+  float min_correspondence_cost_; // 地图概率最小值
+  float max_correspondence_cost_; // 地图概率最大值
+  std::vector<int> update_indices_; // 记录被更新的栅格索引
 
   // Bounding box of known cells to efficiently compute cropping limits.
-  Eigen::AlignedBox2i known_cells_box_;
+  Eigen::AlignedBox2i known_cells_box_;// 已知概率的栅格的bounding box
   const std::vector<float>* value_to_correspondence_cost_table_;
 };
 

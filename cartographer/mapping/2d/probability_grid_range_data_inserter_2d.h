@@ -52,8 +52,8 @@ class ProbabilityGridRangeDataInserter2D : public RangeDataInserterInterface {
 
  private:
   const proto::ProbabilityGridRangeDataInserterOptions2D options_;
-  const std::vector<uint16> hit_table_;
-  const std::vector<uint16> miss_table_;
+  const std::vector<uint16> hit_table_; // hit概率更新查找表
+  const std::vector<uint16> miss_table_; // miss概率更新查找表
 };
 
 }  // namespace mapping

@@ -73,6 +73,7 @@ const std::vector<float>* const kValueToProbability =
 const std::vector<float>* const kValueToCorrespondenceCost =
     PrecomputeValueToCorrespondenceCost().release();
 
+// 通过odds计算概率更新查找表
 std::vector<uint16> ComputeLookupTableToApplyOdds(const float odds) {
   std::vector<uint16> result;
   result.reserve(kValueCount);
@@ -86,6 +87,7 @@ std::vector<uint16> ComputeLookupTableToApplyOdds(const float odds) {
   return result;
 }
 
+// 通过probability计算概率更新查找表
 std::vector<uint16> ComputeLookupTableToApplyCorrespondenceCostOdds(
     float odds) {
   std::vector<uint16> result;

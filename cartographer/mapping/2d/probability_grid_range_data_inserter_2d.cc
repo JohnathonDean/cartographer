@@ -133,19 +133,22 @@ CreateProbabilityGridRangeDataInserterOptions2D(
 ProbabilityGridRangeDataInserter2D::ProbabilityGridRangeDataInserter2D(
     const proto::ProbabilityGridRangeDataInserterOptions2D& options)
     : options_(options),
-      hit_table_(ComputeLookupTableToApplyCorrespondenceCostOdds(
+      hit_table_(ComputeLookupTableToApplyCorrespondenceCostOdds( // 使用hit_probability初始化hit概率更新查找表
           Odds(options.hit_probability()))),
-      miss_table_(ComputeLookupTableToApplyCorrespondenceCostOdds(
+      miss_table_(ComputeLookupTableToApplyCorrespondenceCostOdds(  // 使用miss_probability初始化miss概率更新查找表
           Odds(options.miss_probability()))) {}
 
+// 插入新的点云数据更新概率栅格图
 void ProbabilityGridRangeDataInserter2D::Insert(
     const sensor::RangeData& range_data, GridInterface* const grid) const {
   ProbabilityGrid* const probability_grid = static_cast<ProbabilityGrid*>(grid);
   CHECK(probability_grid != nullptr);
   // By not finishing the update after hits are inserted, we give hits priority
   // (i.e. no hits will be ignored because of a miss in the same cell).
+  // 调用CastRays函数根据输入点云数据更新概率栅格值
   CastRays(range_data, hit_table_, miss_table_, options_.insert_free_space(),
            probability_grid);
+  // 完成栅格概率值更新
   probability_grid->FinishUpdate();
 }
 

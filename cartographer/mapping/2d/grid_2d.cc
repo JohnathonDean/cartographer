@@ -63,7 +63,7 @@ Grid2D::Grid2D(const MapLimits& limits, float min_correspondence_cost,
     : limits_(limits),
       correspondence_cost_cells_(
           limits_.cell_limits().num_x_cells * limits_.cell_limits().num_y_cells,
-          kUnknownCorrespondenceValue),
+          kUnknownCorrespondenceValue), // 栅格概率值列表的初始化，赋值kUnknownCorrespondenceValue=0
       min_correspondence_cost_(min_correspondence_cost),
       max_correspondence_cost_(max_correspondence_cost),
       value_to_correspondence_cost_table_(conversion_tables->GetConversionTable(
@@ -96,6 +96,7 @@ Grid2D::Grid2D(const proto::Grid2D& proto,
 }
 
 // Finishes the update sequence.
+// 每次更新完一帧点云后将所有update_indices_中记录更新过的栅格的值减去kUpdateMarker
 void Grid2D::FinishUpdate() {
   while (!update_indices_.empty()) {
     DCHECK_GE(correspondence_cost_cells_[update_indices_.back()],
