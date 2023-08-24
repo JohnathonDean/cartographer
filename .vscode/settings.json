@@ -6,5 +6,8 @@
     "python.analysis.extraPaths": [
         "/home/dean/code/catkin_ws/devel_isolated/cartographer_ros_msgs/lib/python3/dist-packages",
         "/opt/ros/noetic/lib/python3/dist-packages"
-    ]
+    ],
+    "files.associations": {
+        "chrono": "cpp"
+    }
 }

@@ -53,15 +53,18 @@ class GlobalTrajectoryBuilder : public mapping::TrajectoryBuilderInterface {
   GlobalTrajectoryBuilder(const GlobalTrajectoryBuilder&) = delete;
   GlobalTrajectoryBuilder& operator=(const GlobalTrajectoryBuilder&) = delete;
 
+// 雷达数据处理
   void AddSensorData(
       const std::string& sensor_id,
       const sensor::TimedPointCloudData& timed_point_cloud_data) override {
+    //检测是否存在前端，没有前端则报错
     CHECK(local_trajectory_builder_)
         << "Cannot add TimedPointCloudData without a LocalTrajectoryBuilder.";
+    // 通过前端进行扫描匹配, 然后返回匹配后的结果
     std::unique_ptr<typename LocalTrajectoryBuilder::MatchingResult>
         matching_result = local_trajectory_builder_->AddRangeData(
             sensor_id, timed_point_cloud_data);
-    if (matching_result == nullptr) {
+    if (matching_result == nullptr) { //如果失败了，直接返回
       // The range data has not been fully accumulated yet.
       return;
     }
@@ -69,6 +72,7 @@ class GlobalTrajectoryBuilder : public mapping::TrajectoryBuilderInterface {
     std::unique_ptr<InsertionResult> insertion_result;
     if (matching_result->insertion_result != nullptr) {
       kLocalSlamInsertionResults->Increment();
+      // 将匹配后的结果 当做节点 加入到位姿图中
       auto node_id = pose_graph_->AddNode(
           matching_result->insertion_result->constant_data, trajectory_id_,
           matching_result->insertion_result->insertion_submaps);
@@ -79,6 +83,7 @@ class GlobalTrajectoryBuilder : public mapping::TrajectoryBuilderInterface {
               matching_result->insertion_result->insertion_submaps.begin(),
               matching_result->insertion_result->insertion_submaps.end())});
     }
+    // 将结果数据传入回调函数LocalSlamResultCallback中
     if (local_slam_result_callback_) {
       local_slam_result_callback_(
           trajectory_id_, matching_result->time, matching_result->local_pose,
@@ -144,8 +149,9 @@ class GlobalTrajectoryBuilder : public mapping::TrajectoryBuilderInterface {
 
 }  // namespace
 
+// 创建完整的2D SLAM对象GlobalTrajectoryBuilder2D
 std::unique_ptr<TrajectoryBuilderInterface> CreateGlobalTrajectoryBuilder2D(
-    std::unique_ptr<LocalTrajectoryBuilder2D> local_trajectory_builder,
+    std::unique_ptr<LocalTrajectoryBuilder2D> local_trajectory_builder, // 在 MapBuilder::AddTrajectoryBuilder() 中创建
     const int trajectory_id, mapping::PoseGraph2D* const pose_graph,
     const TrajectoryBuilderInterface::LocalSlamResultCallback&
         local_slam_result_callback,

@@ -219,6 +219,7 @@ LocalTrajectoryBuilder2D::AddRangeData(
     // TODO(gaschler): This assumes that 'range_data_poses.back()' is at time
     // 'time'.
     accumulated_range_data_.origin = range_data_poses.back().translation();
+    // 继续调用下一层接口AddAccumulatedRangeData，返回匹配结果
     return AddAccumulatedRangeData(
         time,
         TransformToGravityAlignedFrameAndFilter(
@@ -229,6 +230,7 @@ LocalTrajectoryBuilder2D::AddRangeData(
   return nullptr;
 }
 
+// 被最外层函数AddRangeData调用，插入雷达数据，返回匹配结果
 std::unique_ptr<LocalTrajectoryBuilder2D::MatchingResult>
 LocalTrajectoryBuilder2D::AddAccumulatedRangeData(
     const common::Time time,
@@ -295,6 +297,7 @@ LocalTrajectoryBuilder2D::AddAccumulatedRangeData(
   }
   last_wall_time_ = wall_time;
   last_thread_cpu_time_seconds_ = thread_cpu_time_seconds;
+  // 返回匹配结果
   return absl::make_unique<MatchingResult>(
       MatchingResult{time, pose_estimate, std::move(range_data_in_local),
                      std::move(insertion_result)});
@@ -311,7 +314,7 @@ LocalTrajectoryBuilder2D::InsertIntoSubmap(
   if (motion_filter_.IsSimilar(time, pose_estimate)) {
     return nullptr;
   }
-  // 将输入的雷达数据插入到活跃的submap中
+  // 将输入的雷达数据插入到活跃的submap中，返回活跃的submap队列
   std::vector<std::shared_ptr<const Submap2D>> insertion_submaps =
       active_submaps_.InsertRangeData(range_data_in_local);
   // 返回插入结果

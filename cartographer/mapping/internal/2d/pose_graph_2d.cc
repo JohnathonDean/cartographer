@@ -130,21 +130,28 @@ NodeId PoseGraph2D::AppendNode(
     const std::vector<std::shared_ptr<const Submap2D>>& insertion_submaps,
     const transform::Rigid3d& optimized_pose) {
   absl::MutexLock locker(&mutex_);
+  // 如果 trajectory_id 对应轨迹的状态未被添加至成员变量 PoseGraph2D::data_::trajectories_state 中，
+  // 则会为该轨迹创建一个默认的 InternalTrajectoryState 对象，后续会一直使用其存储该轨迹的状态。
   AddTrajectoryIfNeeded(trajectory_id);
+  // 根据轨迹状态判断是否可以添加修改任务
   if (!CanAddWorkItemModifying(trajectory_id)) {
     LOG(WARNING) << "AddNode was called for finished or deleted trajectory.";
   }
+  // 向节点列表中添加一个新的节点
   const NodeId node_id = data_.trajectory_nodes.Append(
       trajectory_id, TrajectoryNode{constant_data, optimized_pose});
   ++data_.num_trajectory_nodes;
   // Test if the 'insertion_submap.back()' is one we never saw before.
+  // 如果是刚开始的轨迹, 或者insertion_submaps.back()是第一次看到, 就添加新的子图
   if (data_.submap_data.SizeOfTrajectoryOrZero(trajectory_id) == 0 ||
       std::prev(data_.submap_data.EndOfTrajectory(trajectory_id))
               ->data.submap != insertion_submaps.back()) {
     // We grow 'data_.submap_data' as needed. This code assumes that the first
     // time we see a new submap is as 'insertion_submaps.back()'.
+    // 向data_.submap_data中新加入一张子图
     const SubmapId submap_id =
         data_.submap_data.Append(trajectory_id, InternalSubmapData());
+    // 新加入的子图重新与活跃子图列表的最后一张子图绑定
     data_.submap_data.at(submap_id).submap = insertion_submaps.back();
     LOG(INFO) << "Inserted submap " << submap_id << ".";
     kActiveSubmapsMetric->Increment();

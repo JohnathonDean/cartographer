@@ -30,6 +30,7 @@
 namespace cartographer {
 namespace mapping {
 
+// 创建完整的2D SLAM对象GlobalTrajectoryBuilder2D
 std::unique_ptr<TrajectoryBuilderInterface> CreateGlobalTrajectoryBuilder2D(
     std::unique_ptr<LocalTrajectoryBuilder2D> local_trajectory_builder,
     const int trajectory_id, mapping::PoseGraph2D* const pose_graph,
