@@ -166,10 +166,11 @@ int MapBuilder::AddTrajectoryBuilder(
   MaybeAddPureLocalizationTrimmer(trajectory_id, trajectory_options,
                                   pose_graph_.get());
 
+// 通过trajectory_options读取参数，设置新增轨迹的初始位姿
   if (trajectory_options.has_initial_trajectory_pose()) {
     const auto& initial_trajectory_pose =
         trajectory_options.initial_trajectory_pose();
-    pose_graph_->SetInitialTrajector·yPose(
+    pose_graph_->SetInitialTrajectoryPose(
         trajectory_id, initial_trajectory_pose.to_trajectory_id(),
         transform::ToRigid3(initial_trajectory_pose.relative_pose()),
         common::FromUniversal(initial_trajectory_pose.timestamp()));

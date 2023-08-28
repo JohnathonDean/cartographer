@@ -74,10 +74,20 @@ ConstraintBuilder2D::~ConstraintBuilder2D() {
   CHECK(when_done_ == nullptr);
 }
 
+/**
+ * @brief 进行局部搜索窗口的约束计算(对局部子图进行回环检测)
+ * 
+ * @param[in] submap_id submap的id
+ * @param[in] submap 单个submap
+ * @param[in] node_id 节点的id
+ * @param[in] constant_data 节点的数据
+ * @param[in] initial_relative_pose 约束的初值
+ */
 void ConstraintBuilder2D::MaybeAddConstraint(
     const SubmapId& submap_id, const Submap2D* const submap,
     const NodeId& node_id, const TrajectoryNode::Data* const constant_data,
     const transform::Rigid2d& initial_relative_pose) {
+  // 超过范围的不进行约束的计算
   if (initial_relative_pose.translation().norm() >
       options_.max_constraint_distance()) {
     return;
@@ -89,28 +99,44 @@ void ConstraintBuilder2D::MaybeAddConstraint(
     return;
   }
 
+  // 当when_done_正在处理任务时调用本函数, 报个警告
   absl::MutexLock locker(&mutex_);
   if (when_done_) {
     LOG(WARNING)
         << "MaybeAddConstraint was called while WhenDone was scheduled.";
   }
+  // 在队列中新建一个指向Constraint数据的指针
   constraints_.emplace_back();
   kQueueLengthMetric->Set(constraints_.size());
   auto* const constraint = &constraints_.back();
+  // 为子图新建一个匹配器
   const auto* scan_matcher =
       DispatchScanMatcherConstruction(submap_id, submap->grid());
+  // 生成个计算约束的任务
   auto constraint_task = absl::make_unique<common::Task>();
   constraint_task->SetWorkItem([=]() LOCKS_EXCLUDED(mutex_) {
     ComputeConstraint(submap_id, submap, node_id, false, /* match_full_submap */
                       constant_data, initial_relative_pose, *scan_matcher,
                       constraint);
   });
+  // 等匹配器之后初始化才能进行约束的计算
   constraint_task->AddDependency(scan_matcher->creation_task_handle);
+  // 将计算约束这个任务放入线程池等待执行
   auto constraint_task_handle =
       thread_pool_->Schedule(std::move(constraint_task));
+  // 将计算约束这个任务 添加到 finish_node_task_的依赖项中
   finish_node_task_->AddDependency(constraint_task_handle);
 }
 
+
+/**
+ * @brief 进行全局搜索窗口的约束计算(对整体子图进行回环检测)
+ * 
+ * @param[in] submap_id submap的id
+ * @param[in] submap 单个submap
+ * @param[in] node_id 节点的id
+ * @param[in] constant_data 节点的数据
+ */
 void ConstraintBuilder2D::MaybeAddGlobalConstraint(
     const SubmapId& submap_id, const Submap2D* const submap,
     const NodeId& node_id, const TrajectoryNode::Data* const constant_data) {
@@ -122,9 +148,11 @@ void ConstraintBuilder2D::MaybeAddGlobalConstraint(
   constraints_.emplace_back();
   kQueueLengthMetric->Set(constraints_.size());
   auto* const constraint = &constraints_.back();
+  // 为子图新建一个匹配器
   const auto* scan_matcher =
       DispatchScanMatcherConstruction(submap_id, submap->grid());
   auto constraint_task = absl::make_unique<common::Task>();
+  // 生成个计算全局约束的任务
   constraint_task->SetWorkItem([=]() LOCKS_EXCLUDED(mutex_) {
     ComputeConstraint(submap_id, submap, node_id, true, /* match_full_submap */
                       constant_data, transform::Rigid2d::Identity(),
