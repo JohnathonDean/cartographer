@@ -115,7 +115,7 @@ std::map<SubmapId, common::Time> ComputeSubmapFreshness(
   // Find the node with the largest NodeId per SubmapId.
   // 根据约束，寻找submap内所有的Node_id
   std::map<SubmapId, NodeId> submap_to_latest_node;
-  // 遍历所有的约束
+  // 遍历所有的约束，定位过程中仅在当前的轨迹中计算有约束，加载的地图轨迹中不存在约束
   for (const PoseGraphInterface::Constraint& constraint : constraints) {
     // 只遍历sequence边
     if (constraint.tag != PoseGraphInterface::Constraint::INTRA_SUBMAP) {
@@ -231,35 +231,3 @@ void OverlappingSubmapsTrimmer2D::Trim(Trimmable* pose_graph) {
 }  // namespace mapping
 }  // namespace cartographer
 
-
-#include <Eigen/Geometry>
-
-// 判断两个矩形是否有重叠
-bool IsRectanglesOverlap(const Eigen::Isometry3d& rectA_pose, const Eigen::Isometry3d& rectB_pose,
-                         double rectA_x_min, double rectA_y_min, double rectA_x_max, double rectA_y_max,
-                         double rectB_x_min, double rectB_y_min, double rectB_x_max, double rectB_y_max) {
-    // 计算从A到B的坐标系转换
-    Eigen::Isometry3d A_to_B = rectB_pose.inverse() * rectA_pose;
-
-    // 定义A矩形的四个顶点
-    Eigen::Vector3d A_top_left(     rectA_x_min, rectA_y_min, 1.0);
-    Eigen::Vector3d A_top_right(    rectA_x_max, rectA_y_min, 1.0);
-    Eigen::Vector3d A_bottom_left(  rectA_x_min, rectA_y_max, 1.0);
-    Eigen::Vector3d A_bottom_right( rectA_x_max, rectA_y_max, 1.0);
-
-    // 将A矩形的四个顶点转换到B的坐标系中
-    A_top_left = A_to_B * A_top_left;
-    A_top_right = A_to_B * A_top_right;
-    A_bottom_left = A_to_B * A_bottom_left;
-    A_bottom_right = A_to_B * A_bottom_right;
-
-    // 检查A矩形的转换后的顶点是否与B矩形有重叠
-    if (std::max({A_top_left.x(), A_top_right.x(), A_bottom_left.x(), A_bottom_right.x()}) < rectB_x_min || 
-        std::min({A_top_left.x(), A_top_right.x(), A_bottom_left.x(), A_bottom_right.x()}) > rectB_x_max ||
-        std::max({A_top_left.y(), A_top_right.y(), A_bottom_left.y(), A_bottom_right.y()}) < rectB_y_min || 
-        std::min({A_top_left.y(), A_top_right.y(), A_bottom_left.y(), A_bottom_right.y()}) > rectB_y_max) {
-        return false; // 无重叠
-    }
-
-    return true; // 有重叠
-}
