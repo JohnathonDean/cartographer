@@ -226,6 +226,7 @@ void MapBuilder::SerializeState(bool include_unfinished_submaps,
                     include_unfinished_submaps);
 }
 
+// 将地图序列化保存到PbStream文件
 bool MapBuilder::SerializeStateToFile(bool include_unfinished_submaps,
                                       const std::string& filename) {
   io::ProtoStreamWriter writer(filename);
@@ -234,6 +235,7 @@ bool MapBuilder::SerializeStateToFile(bool include_unfinished_submaps,
   return (writer.Close());
 }
 
+// 加载地图
 std::map<int, int> MapBuilder::LoadState(
     io::ProtoStreamReaderInterface* const reader, bool load_frozen_state) {
   io::ProtoStreamDeserializer deserializer(reader);
@@ -397,6 +399,7 @@ std::map<int, int> MapBuilder::LoadState(
     // When loading unfrozen trajectories, 'AddSerializedConstraints' will
     // take care of adding information about which nodes belong to which
     // submap.
+    // 如果加载的trajectories为unfrozen状态，则会从序列化文件中加载约束数据
     pose_graph_->AddSerializedConstraints(
         FromProto(pose_graph_proto.constraint()));
   }
@@ -404,6 +407,7 @@ std::map<int, int> MapBuilder::LoadState(
   return trajectory_remapping;
 }
 
+// 从pbstream文件加载地图
 std::map<int, int> MapBuilder::LoadStateFromFile(
     const std::string& state_filename, const bool load_frozen_state) {
   const std::string suffix = ".pbstream";
@@ -417,7 +421,7 @@ std::map<int, int> MapBuilder::LoadStateFromFile(
   return LoadState(&stream, load_frozen_state);
 }
 
-// 创建MapBuilder
+// 创建MapBuilder的工厂函数
 std::unique_ptr<MapBuilderInterface> CreateMapBuilder(
     const proto::MapBuilderOptions& options) {
   return absl::make_unique<MapBuilder>(options);
