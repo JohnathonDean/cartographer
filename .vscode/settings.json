@@ -9,7 +9,10 @@
     ],
     "files.associations": {
         "chrono": "cpp",
-        "memory_resource": "cpp"
+        "memory_resource": "cpp",
+        "array": "cpp",
+        "string_view": "cpp",
+        "thread": "cpp"
     },
     "ros.distro": "noetic"
 }

@@ -52,6 +52,7 @@ static auto* kConstraintScoresMetric = metrics::Histogram::Null();
 static auto* kGlobalConstraintScoresMetric = metrics::Histogram::Null();
 static auto* kNumSubmapScanMatchersMetric = metrics::Gauge::Null();
 
+// 返回submap的原点在local坐标系下的二维坐标
 transform::Rigid2d ComputeSubmapPose(const Submap2D& submap) {
   return transform::Project2D(submap.local_pose());
 }
@@ -92,6 +93,7 @@ void ConstraintBuilder2D::MaybeAddConstraint(
       options_.max_constraint_distance()) {
     return;
   }
+  // 根据参数配置添加约束的频率
   if (!per_submap_sampler_
            .emplace(std::piecewise_construct, std::forward_as_tuple(submap_id),
                     std::forward_as_tuple(options_.sampling_ratio()))
@@ -164,20 +166,25 @@ void ConstraintBuilder2D::MaybeAddGlobalConstraint(
   finish_node_task_->AddDependency(constraint_task_handle);
 }
 
+// 告诉ConstraintBuilder2D的对象, 刚刚完成了一个节点的约束的计算
 void ConstraintBuilder2D::NotifyEndOfNode() {
   absl::MutexLock locker(&mutex_);
   CHECK(finish_node_task_ != nullptr);
+  // 生成个任务: 将num_finished_nodes_自加, 记录完成约束计算节点的总个数
   finish_node_task_->SetWorkItem([this] {
     absl::MutexLock locker(&mutex_);
     ++num_finished_nodes_;
   });
+  // 将这个任务传入线程池中等待执行, 由于之前添加了依赖, 所以finish_node_task_一定会比计算约束更晚完成
   auto finish_node_task_handle =
       thread_pool_->Schedule(std::move(finish_node_task_));
   finish_node_task_ = absl::make_unique<common::Task>();
+  // 设置when_done_task_依赖finish_node_task_handle
   when_done_task_->AddDependency(finish_node_task_handle);
   ++num_started_nodes_;
 }
 
+// 约束计算完成之后执行一下回调函数
 void ConstraintBuilder2D::WhenDone(
     const std::function<void(const ConstraintBuilder2D::Result&)>& callback) {
   absl::MutexLock locker(&mutex_);
