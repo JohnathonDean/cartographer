@@ -197,29 +197,49 @@ void ConstraintBuilder2D::WhenDone(
   when_done_task_ = absl::make_unique<common::Task>();
 }
 
+// 为每个子图新建一个匹配器
 const ConstraintBuilder2D::SubmapScanMatcher*
 ConstraintBuilder2D::DispatchScanMatcherConstruction(const SubmapId& submap_id,
                                                      const Grid2D* const grid) {
   CHECK(grid);
+  // 如果匹配器里已经存在, 则直接返回对应id的匹配器
   if (submap_scan_matchers_.count(submap_id) != 0) {
     return &submap_scan_matchers_.at(submap_id);
   }
+  // submap_scan_matchers_新增加一个 key
   auto& submap_scan_matcher = submap_scan_matchers_[submap_id];
   kNumSubmapScanMatchersMetric->Set(submap_scan_matchers_.size());
+  // 保存栅格地图的指针
   submap_scan_matcher.grid = grid;
   auto& scan_matcher_options = options_.fast_correlative_scan_matcher_options();
   auto scan_matcher_task = absl::make_unique<common::Task>();
+  // 生成一个将初始化匹配器的任务, 初始化时会计算多分辨率地图, 比较耗时
   scan_matcher_task->SetWorkItem(
       [&submap_scan_matcher, &scan_matcher_options]() {
+        // 进行匹配器的初始化, 与多分辨率地图的创建
         submap_scan_matcher.fast_correlative_scan_matcher =
             absl::make_unique<scan_matching::FastCorrelativeScanMatcher2D>(
                 *submap_scan_matcher.grid, scan_matcher_options);
       });
+  // 将初始化匹配器的任务放入线程池中, 并且将任务的智能指针保存起来
   submap_scan_matcher.creation_task_handle =
       thread_pool_->Schedule(std::move(scan_matcher_task));
   return &submap_scan_matchers_.at(submap_id);
 }
 
+/**
+ * @brief 计算节点和子图之间的一个约束(回环检测)
+ *        用基于分支定界算法的匹配器进行粗匹配,然后用ceres进行精匹配
+ * 
+ * @param[in] submap_id submap的id
+ * @param[in] submap 地图数据
+ * @param[in] node_id 节点id
+ * @param[in] match_full_submap 是局部匹配还是全子图匹配
+ * @param[in] constant_data 节点数据
+ * @param[in] initial_relative_pose 约束的初值
+ * @param[in] submap_scan_matcher 匹配器
+ * @param[out] constraint 计算出的约束
+ */
 void ConstraintBuilder2D::ComputeConstraint(
     const SubmapId& submap_id, const Submap2D* const submap,
     const NodeId& node_id, bool match_full_submap,
@@ -228,6 +248,7 @@ void ConstraintBuilder2D::ComputeConstraint(
     const SubmapScanMatcher& submap_scan_matcher,
     std::unique_ptr<ConstraintBuilder2D::Constraint>* constraint) {
   CHECK(submap_scan_matcher.fast_correlative_scan_matcher);
+  // Step:1 得到节点在local frame下的坐标
   const transform::Rigid2d initial_pose =
       ComputeSubmapPose(*submap) * initial_relative_pose;
 
@@ -243,7 +264,12 @@ void ConstraintBuilder2D::ComputeConstraint(
   // 1. Fast estimate using the fast correlative scan matcher.
   // 2. Prune if the score is too low.
   // 3. Refine.
+  // param: global_localization_min_score 对整体子图进行回环检测时的最低分数阈值
+  // param: min_score 对局部子图进行回环检测时的最低分数阈值
+
+  // Step:2 使用基于分支定界算法的匹配器进行粗匹配
   if (match_full_submap) {
+    // 节点与全地图进行匹配
     kGlobalConstraintsSearchedMetric->Increment();
     if (submap_scan_matcher.fast_correlative_scan_matcher->MatchFullSubmap(
             constant_data->filtered_gravity_aligned_point_cloud,
@@ -254,9 +280,11 @@ void ConstraintBuilder2D::ComputeConstraint(
       kGlobalConstraintsFoundMetric->Increment();
       kGlobalConstraintScoresMetric->Observe(score);
     } else {
+      // 计算失败了就退出
       return;
     }
   } else {
+    // 节点与局部地图进行匹配
     kConstraintsSearchedMetric->Increment();
     if (submap_scan_matcher.fast_correlative_scan_matcher->Match(
             initial_pose, constant_data->filtered_gravity_aligned_point_cloud,
@@ -277,14 +305,18 @@ void ConstraintBuilder2D::ComputeConstraint(
   // Use the CSM estimate as both the initial and previous pose. This has the
   // effect that, in the absence of better information, we prefer the original
   // CSM estimate.
+  // Step:3 使用ceres进行精匹配, 就是前端扫描匹配使用的函数
   ceres::Solver::Summary unused_summary;
   ceres_scan_matcher_.Match(pose_estimate.translation(), pose_estimate,
                             constant_data->filtered_gravity_aligned_point_cloud,
                             *submap_scan_matcher.grid, &pose_estimate,
                             &unused_summary);
 
+  // Step:4 获取节点到submap坐标系原点间的坐标变换
+  // pose_estimate 是 节点在 loacl frame 下的坐标
   const transform::Rigid2d constraint_transform =
       ComputeSubmapPose(*submap).inverse() * pose_estimate;
+  // Step:5 返回计算后的约束
   constraint->reset(new Constraint{submap_id,
                                    node_id,
                                    {transform::Embed3D(constraint_transform),
@@ -311,12 +343,14 @@ void ConstraintBuilder2D::ComputeConstraint(
   }
 }
 
+// 将临时保存的所有约束数据传入回调函数, 并执行回调函数
 void ConstraintBuilder2D::RunWhenDoneCallback() {
   Result result;
   std::unique_ptr<std::function<void(const Result&)>> callback;
   {
     absl::MutexLock locker(&mutex_);
     CHECK(when_done_ != nullptr);
+    // 将计算完的约束进行保存
     for (const std::unique_ptr<Constraint>& constraint : constraints_) {
       if (constraint == nullptr) continue;
       result.push_back(*constraint);
@@ -326,19 +360,24 @@ void ConstraintBuilder2D::RunWhenDoneCallback() {
                 << result.size() << " additional constraints.";
       LOG(INFO) << "Score histogram:\n" << score_histogram_.ToString(10);
     }
+    // 这些约束已经保存过了, 就可以删掉了
     constraints_.clear();
+    // 取到when_done_作为回调函数，并重置when_done_
     callback = std::move(when_done_);
     when_done_.reset();
     kQueueLengthMetric->Set(constraints_.size());
   }
+  // 执行回调函数 HandleWorkQueue，这个函数是通过when_done_传入的
   (*callback)(result);
 }
 
+// 获取完成约束计算节点的总个数
 int ConstraintBuilder2D::GetNumFinishedNodes() {
   absl::MutexLock locker(&mutex_);
   return num_finished_nodes_;
 }
 
+// 删除指定submap_id的匹配器
 void ConstraintBuilder2D::DeleteScanMatcher(const SubmapId& submap_id) {
   absl::MutexLock locker(&mutex_);
   if (when_done_) {

@@ -411,14 +411,16 @@ std::map<int, int> MapBuilder::LoadState(
   if (load_frozen_state) {
     // Add information about which nodes belong to which submap.
     // This is required, even without constraints.
+    // 如果轨迹为frozen状态则不会加载其中的约束数据，但是仍需要添加每个子图包含的节点数据
     for (const proto::PoseGraph::Constraint& constraint_proto :
          pose_graph_proto.constraint()) {
       // 如果子图外约束就跳过, 只向子图添加子图内约束的节点
+      // 通过遍历所有子图内约束可以找到每个子图所包含的所有节点
       if (constraint_proto.tag() !=
           proto::PoseGraph::Constraint::INTRA_SUBMAP) {
         continue;
       }
-      // 添加子图的附属的节点
+      // 添加子图包含的节点
       pose_graph_->AddNodeToSubmap(
           NodeId{constraint_proto.node_id().trajectory_id(),
                  constraint_proto.node_id().node_index()},

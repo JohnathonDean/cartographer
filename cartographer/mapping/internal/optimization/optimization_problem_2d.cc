@@ -237,6 +237,13 @@ void OptimizationProblem2D::SetMaxNumIterations(
       max_num_iterations);
 }
 
+/**
+ * @brief 搭建优化问题并进行求解
+ * 
+ * @param[in] constraints 所有的约束数据
+ * @param[in] trajectories_state 轨迹的状态
+ * @param[in] landmark_nodes landmark数据
+ */
 void OptimizationProblem2D::Solve(
     const std::vector<Constraint>& constraints,
     const std::map<int, PoseGraphInterface::TrajectoryState>&
@@ -247,6 +254,7 @@ void OptimizationProblem2D::Solve(
     return;
   }
 
+  // 记录下所有FROZEN状态的轨迹id
   std::set<int> frozen_trajectories;
   for (const auto& it : trajectories_state) {
     if (it.second == PoseGraphInterface::TrajectoryState::FROZEN) {
@@ -254,37 +262,49 @@ void OptimizationProblem2D::Solve(
     }
   }
 
+  // 创建优化问题对象
   ceres::Problem::Options problem_options;
   ceres::Problem problem(problem_options);
 
   // Set the starting point.
   // TODO(hrapp): Move ceres data into SubmapSpec.
+  // ceres需要double的指针, std::array能转成原始指针的形式
   MapById<SubmapId, std::array<double, 3>> C_submaps;
   MapById<NodeId, std::array<double, 3>> C_nodes;
   std::map<std::string, CeresPose> C_landmarks;
   bool first_submap = true;
+  // 将需要优化的子图位姿设置为优化参数
   for (const auto& submap_id_data : submap_data_) {
+    // submap_id的轨迹 是否是 已经冻结的轨迹
     const bool frozen =
         frozen_trajectories.count(submap_id_data.id.trajectory_id) != 0;
+    // 将子图的global_pose放入C_submaps中
     C_submaps.Insert(submap_id_data.id,
                      FromPose(submap_id_data.data.global_pose));
+    // c++11: std::array::data() 返回指向数组对象中第一个元素的指针
+    // Step: 添加需要优化的数据 这里显式添加参数块,会进行额外的参数块正确性检查
     problem.AddParameterBlock(C_submaps.at(submap_id_data.id).data(), 3);
     if (first_submap || frozen) {
       first_submap = false;
       // Fix the pose of the first submap or all submaps of a frozen
       // trajectory.
+      // Step: 如果是第一幅子图, 或者是已经冻结的轨迹中的子图, 不优化这个子图位姿
       problem.SetParameterBlockConstant(C_submaps.at(submap_id_data.id).data());
     }
   }
+  // 将需要优化的节点位姿设置为优化参数
   for (const auto& node_id_data : node_data_) {
     const bool frozen =
         frozen_trajectories.count(node_id_data.id.trajectory_id) != 0;
+    // 将节点的global_pose_2d放入C_nodes中
     C_nodes.Insert(node_id_data.id, FromPose(node_id_data.data.global_pose_2d));
     problem.AddParameterBlock(C_nodes.at(node_id_data.id).data(), 3);
+    // 第一个节点的位姿也是要优化的变量, 不是固定的
     if (frozen) {
       problem.SetParameterBlockConstant(C_nodes.at(node_id_data.id).data());
     }
   }
+  // Step: 第一种残差 将节点与子图原点在global坐标系下的相对位姿 与 约束 的差值作为残差项
   // Add cost functions for intra- and inter-submap constraints.
   for (const Constraint& constraint : constraints) {
     problem.AddResidualBlock(

@@ -714,9 +714,11 @@ bool PoseGraph2D::IsTrajectoryFinished(const int trajectory_id) const {
              TrajectoryState::FINISHED;
 }
 
+// 将指定轨迹id设置为FROZEN状态
 void PoseGraph2D::FreezeTrajectory(const int trajectory_id) {
   {
     absl::MutexLock locker(&mutex_);
+    // 将轨迹与自己做连接，即将轨迹标记为连接关系的尽头
     data_.trajectory_connectivity_state.Add(trajectory_id);
   }
   AddWorkItem([this, trajectory_id]() LOCKS_EXCLUDED(mutex_) {
@@ -743,12 +745,14 @@ void PoseGraph2D::FreezeTrajectory(const int trajectory_id) {
   });
 }
 
+// 判断轨迹是否是 FROZEN 状态
 bool PoseGraph2D::IsTrajectoryFrozen(const int trajectory_id) const {
   return data_.trajectories_state.count(trajectory_id) != 0 &&
          data_.trajectories_state.at(trajectory_id).state ==
              TrajectoryState::FROZEN;
 }
 
+// 从proto流数据中添加Submap
 void PoseGraph2D::AddSubmapFromProto(
     const transform::Rigid3d& global_submap_pose, const proto::Submap& submap) {
   if (!submap.has_submap_2d()) {
@@ -791,6 +795,7 @@ void PoseGraph2D::AddSubmapFromProto(
       });
 }
 
+// 从proto流数据中添加节点
 void PoseGraph2D::AddNodeFromProto(const transform::Rigid3d& global_pose,
                                    const proto::Node& node) {
   const NodeId node_id = {node.node_id().trajectory_id(),
@@ -846,6 +851,7 @@ void PoseGraph2D::SetTrajectoryDataFromProto(
   }
 }
 
+// 将节点添加到submap中的节点列表中
 void PoseGraph2D::AddNodeToSubmap(const NodeId& node_id,
                                   const SubmapId& submap_id) {
   AddWorkItem([this, node_id, submap_id]() LOCKS_EXCLUDED(mutex_) {
@@ -857,6 +863,7 @@ void PoseGraph2D::AddNodeToSubmap(const NodeId& node_id,
   });
 }
 
+// 向data_中添加约束数据
 void PoseGraph2D::AddSerializedConstraints(
     const std::vector<Constraint>& constraints) {
   AddWorkItem([this, constraints]() LOCKS_EXCLUDED(mutex_) {
@@ -874,6 +881,7 @@ void PoseGraph2D::AddSerializedConstraints(
                     .second);
           break;
         case Constraint::Tag::INTER_SUBMAP:
+          // 如果是子图外约束则更新轨迹间的连接关系
           UpdateTrajectoryConnectivity(constraint);
           break;
       }
@@ -883,6 +891,7 @@ void PoseGraph2D::AddSerializedConstraints(
                   data_.trajectory_nodes.at(constraint.node_id)
                       .constant_data->gravity_alignment.inverse()),
           constraint.pose.translation_weight, constraint.pose.rotation_weight};
+      // 将约束数据加入data_中
       data_.constraints.push_back(Constraint{
           constraint.submap_id, constraint.node_id, pose, constraint.tag});
     }
@@ -921,7 +930,9 @@ void PoseGraph2D::RunFinalOptimization() {
   WaitForAllComputations();
 }
 
+// 进行优化处理, 并使用优化结果对保存的数据进行更新
 void PoseGraph2D::RunOptimization() {
+  // 如果submap为空直接退出
   if (optimization_problem_->submap_data().empty()) {
     return;
   }
@@ -930,15 +941,26 @@ void PoseGraph2D::RunOptimization() {
   // data_.constraints, data_.frozen_trajectories and data_.landmark_nodes
   // when executing the Solve. Solve is time consuming, so not taking the mutex
   // before Solve to avoid blocking foreground processing.
+  // Solve 比较耗时, 所以在执行 Solve 之前不要加互斥锁, 以免阻塞其他的任务处理
+  // landmark直接参与优化问题
   optimization_problem_->Solve(data_.constraints, GetTrajectoryStates(),
                                data_.landmark_nodes);
   absl::MutexLock locker(&mutex_);
 
+  // 获取优化后的结果
+  // submap_data的类型是 MapById<SubmapId, optimization::SubmapSpec2D> 
   const auto& submap_data = optimization_problem_->submap_data();
+  // node_data的类型是 MapById<NodeId, NodeSpec2D>
+  // node_data是优化后的所有节点的新位姿
   const auto& node_data = optimization_problem_->node_data();
+  // 更新轨迹内的节点位置
   for (const int trajectory_id : node_data.trajectory_ids()) {
     for (const auto& node : node_data.trajectory(trajectory_id)) {
+      // Step: 根据优化后的结果对data_.trajectory_nodes的global_pose进行更新
+      // node 是 IdDataReference 类型
+      // mutable_trajectory_node是TrajectoryNode类型
       auto& mutable_trajectory_node = data_.trajectory_nodes.at(node.id);
+      // 将优化后的二维节点位姿旋转到机器人的姿态上得到global_pose
       mutable_trajectory_node.global_pose =
           transform::Embed3D(node.data.global_pose_2d) *
           transform::Rigid3d::Rotation(
@@ -947,17 +969,24 @@ void PoseGraph2D::RunOptimization() {
 
     // Extrapolate all point cloud poses that were not included in the
     // 'optimization_problem_' yet.
+    // 推断尚未包含在“optimization_problem_”中的所有点云姿势
+    // 根据submap_data最后一个被优化的位姿, 计算global坐标系指向local坐标系的坐标变换
     const auto local_to_new_global =
         ComputeLocalToGlobalTransform(submap_data, trajectory_id);
+    // 优化前的 global坐标系指向local坐标系的坐标变换
     const auto local_to_old_global = ComputeLocalToGlobalTransform(
         data_.global_submap_poses_2d, trajectory_id);
+    // 优化产生的改变量
     const transform::Rigid3d old_global_to_new_global =
         local_to_new_global * local_to_old_global.inverse();
 
+    // 这一次优化的node的最后一个id
     const NodeId last_optimized_node_id =
         std::prev(node_data.EndOfTrajectory(trajectory_id))->id;
+    // 指向下一个没有优化的节点
     auto node_it =
         std::next(data_.trajectory_nodes.find(last_optimized_node_id));
+    // Step: 根据之前的位姿改变量, 对没有优化过的位姿进行校正
     for (; node_it != data_.trajectory_nodes.EndOfTrajectory(trajectory_id);
          ++node_it) {
       auto& mutable_trajectory_node = data_.trajectory_nodes.at(node_it->id);
@@ -965,9 +994,11 @@ void PoseGraph2D::RunOptimization() {
           old_global_to_new_global * mutable_trajectory_node.global_pose;
     }
   }
+  // 更新data_.landmark_nodes
   for (const auto& landmark : optimization_problem_->landmark_data()) {
     data_.landmark_nodes[landmark.first].global_landmark_pose = landmark.second;
   }
+  // 更新所有submap的位姿
   data_.global_submap_poses_2d = submap_data;
 }
 
@@ -1022,6 +1053,7 @@ MapById<NodeId, TrajectoryNodePose> PoseGraph2D::GetTrajectoryNodePoses()
   return node_poses;
 }
 
+// 返回图结构中的所有的轨迹状态
 std::map<int, PoseGraphInterface::TrajectoryState>
 PoseGraph2D::GetTrajectoryStates() const {
   std::map<int, PoseGraphInterface::TrajectoryState> trajectories_state;
