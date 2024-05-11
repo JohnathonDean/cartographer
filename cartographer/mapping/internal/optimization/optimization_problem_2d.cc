@@ -106,12 +106,14 @@ transform::Rigid3d GetInitialLandmarkPose(
          observation.landmark_to_tracking_transform;
 }
 
+// landmark数据 与 通过2个节点位姿插值出来的相对位姿 的差值作为残差项
 void AddLandmarkCostFunctions(
     const std::map<std::string, LandmarkNode>& landmark_nodes,
     const MapById<NodeId, NodeSpec2D>& node_data,
     MapById<NodeId, std::array<double, 3>>* C_nodes,
     std::map<std::string, CeresPose>* C_landmarks, ceres::Problem* problem,
     double huber_scale) {
+  // 对所有的landmark进行遍历, 添加landmark的残差
   for (const auto& landmark_node : landmark_nodes) {
     for (const auto& observation : landmark_node.second.landmark_observations) {
       const std::string& landmark_id = landmark_node.first;
@@ -122,6 +124,7 @@ void AddLandmarkCostFunctions(
         continue;
       }
       // Find the trajectory nodes before and after the landmark observation.
+      // 找到landmark观测时间后的第一个节点
       auto next =
           node_data.lower_bound(observation.trajectory_id, observation.time);
       // The landmark observation was made, but the next trajectory node has
@@ -132,22 +135,27 @@ void AddLandmarkCostFunctions(
       if (next == begin_of_trajectory) {
         next = std::next(next);
       }
+      // 找到landmark观测时间前一个节点
       auto prev = std::prev(next);
       // Add parameter blocks for the landmark ID if they were not added before.
       std::array<double, 3>* prev_node_pose = &C_nodes->at(prev->id);
       std::array<double, 3>* next_node_pose = &C_nodes->at(next->id);
       if (!C_landmarks->count(landmark_id)) {
+        // 如果有优化后的位姿就用优化后的位姿, 没有就根据时间插值算出来一个位姿
+        // starting_point就是这帧landmark数据对应的tracking_frame在global坐标系下的位姿
         const transform::Rigid3d starting_point =
             landmark_node.second.global_landmark_pose.has_value()
                 ? landmark_node.second.global_landmark_pose.value()
                 : GetInitialLandmarkPose(observation, prev->data, next->data,
                                          *prev_node_pose, *next_node_pose);
+        // 将landmark数据放入C_landmarks
         C_landmarks->emplace(
             landmark_id,
             CeresPose(starting_point, nullptr /* translation_parametrization */,
                       absl::make_unique<ceres::QuaternionParameterization>(),
                       problem));
         // Set landmark constant if it is frozen.
+        // 如果是已经冻结的轨迹中, 不优化这个landmark_node位姿
         if (landmark_node.second.frozen) {
           problem->SetParameterBlockConstant(
               C_landmarks->at(landmark_id).translation());
@@ -155,6 +163,7 @@ void AddLandmarkCostFunctions(
               C_landmarks->at(landmark_id).rotation());
         }
       }
+      // Step: 第二种残差 landmark数据与节点位姿间的相对坐标变换 与 landmark观测 的差值作为残差项
       problem->AddResidualBlock(
           LandmarkCostFunction2D::CreateAutoDiffCostFunction(
               observation, prev->data, next->data),
@@ -317,10 +326,12 @@ void OptimizationProblem2D::Solve(
         C_nodes.at(constraint.node_id).data());
   }
   // Add cost functions for landmarks.
+  // Step: landmark数据 与 通过2个节点位姿插值出来的相对位姿 的差值作为残差项
   AddLandmarkCostFunctions(landmark_nodes, node_data_, &C_nodes, &C_landmarks,
                            &problem, options_.huber_scale());
   // Add penalties for violating odometry or changes between consecutive nodes
-  // if odometry is not available.
+  // if odometry is not available. 如果里程计不可用, 则添加违反里程计的处罚或连续节点之间的更改
+  // 遍历多个轨迹, 添加里程计与local结果的残差
   for (auto node_it = node_data_.begin(); node_it != node_data_.end();) {
     const int trajectory_id = node_it->id.trajectory_id;
     const auto trajectory_end = node_data_.EndOfTrajectory(trajectory_id);
@@ -342,9 +353,12 @@ void OptimizationProblem2D::Solve(
       }
 
       // Add a relative pose constraint based on the odometry (if available).
+      // 根据里程计数据进行插值得到的2个节点间的坐标变换
       std::unique_ptr<transform::Rigid3d> relative_odometry =
           CalculateOdometryBetweenNodes(trajectory_id, first_node_data,
                                         second_node_data);
+      // Step: 第三种残差 节点与节点间在global坐标系下的相对坐标变换 与 通过里程计数据插值出的相对坐标变换 的差值作为残差项
+      // 如果存在里程计则可增加一个残差
       if (relative_odometry != nullptr) {
         problem.AddResidualBlock(
             CreateAutoDiffSpaCostFunction(Constraint::Pose{
@@ -355,6 +369,7 @@ void OptimizationProblem2D::Solve(
       }
 
       // Add a relative pose constraint based on consecutive local SLAM poses.
+      // 计算相邻2个节点在local坐标系下的坐标变换
       const transform::Rigid3d relative_local_slam_pose =
           transform::Embed3D(first_node_data.local_pose_2d.inverse() *
                              second_node_data.local_pose_2d);
@@ -368,6 +383,7 @@ void OptimizationProblem2D::Solve(
     }
   }
 
+  // 遍历多个轨迹, 添加gps的残差
   std::map<int, std::array<double, 3>> C_fixed_frames;
   for (auto node_it = node_data_.begin(); node_it != node_data_.end();) {
     const int trajectory_id = node_it->id.trajectory_id;
@@ -408,7 +424,7 @@ void OptimizationProblem2D::Solve(
                                FromPose(fixed_frame_pose_in_map));
         fixed_frame_pose_initialized = true;
       }
-
+      // Step: 第五种残差 节点与gps坐标系原点在global坐标系下的相对坐标变换 与 通过gps数据进行插值得到的相对坐标变换 的差值作为残差项
       problem.AddResidualBlock(
           CreateAutoDiffSpaCostFunction(constraint_pose),
           options_.fixed_frame_pose_use_tolerant_loss()
@@ -420,7 +436,7 @@ void OptimizationProblem2D::Solve(
     }
   }
 
-  // Solve.
+  // Solve. 进行求解
   ceres::Solver::Summary summary;
   ceres::Solve(
       common::CreateCeresSolverOptions(options_.ceres_solver_options()),
@@ -429,7 +445,7 @@ void OptimizationProblem2D::Solve(
     LOG(INFO) << summary.FullReport();
   }
 
-  // Store the result.
+  // Store the result.  // 将优化后的所有数据进行更新 Store the result.
   for (const auto& C_submap_id_data : C_submaps) {
     submap_data_.at(C_submap_id_data.id).global_pose =
         ToPose(C_submap_id_data.data);
