@@ -39,6 +39,7 @@ namespace cartographer {
 namespace mapping {
 namespace scan_matching {
 
+// CSM的参数配置对象
 proto::FastCorrelativeScanMatcherOptions2D
 CreateFastCorrelativeScanMatcherOptions2D(
     common::LuaParameterDictionary* parameter_dictionary);
@@ -46,6 +47,7 @@ CreateFastCorrelativeScanMatcherOptions2D(
 // A precomputed grid that contains in each cell (x0, y0) the maximum
 // probability in the width x width area defined by x0 <= x < x0 + width and
 // y0 <= y < y0.
+// 低分辨率子图
 class PrecomputationGrid2D {
  public:
   PrecomputationGrid2D(const Grid2D& grid, const CellLimits& limits, int width,
@@ -92,6 +94,7 @@ class PrecomputationGrid2D {
   std::vector<uint8> cells_;
 };
 
+// 多分辨率子图对象
 class PrecomputationGridStack2D {
  public:
   PrecomputationGridStack2D(
